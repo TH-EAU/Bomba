@@ -4,11 +4,12 @@ shader_type sky;
 // Tout est procédural (aucune texture). Les couleurs suivent la référence « rose et bleu ».
 
 uniform vec4 color_under : source_color = vec4(0.01, 0.015, 0.05, 1.0);
-uniform vec4 color_horizon : source_color = vec4(0.98, 0.72, 0.86, 1.0);
-uniform vec4 color_lavender : source_color = vec4(0.62, 0.58, 0.92, 1.0);
-uniform vec4 color_light_blue : source_color = vec4(0.3, 0.55, 0.88, 1.0);
-uniform vec4 color_blue : source_color = vec4(0.1, 0.35, 0.7, 1.0);
-uniform vec4 color_night : source_color = vec4(0.02, 0.03, 0.12, 1.0);
+// Ciel éclairé (côté soleil) : bleu clair pâle à l'horizon, bleu profond au zénith.
+uniform vec4 day_horizon : source_color = vec4(0.72, 0.84, 0.97, 1.0);
+uniform vec4 day_zenith : source_color = vec4(0.2, 0.44, 0.86, 1.0);
+// Ciel dans l'ombre (côté opposé) : bleu nuit.
+uniform vec4 night_horizon : source_color = vec4(0.07, 0.13, 0.3, 1.0);
+uniform vec4 night_zenith : source_color = vec4(0.01, 0.03, 0.12, 1.0);
 
 uniform vec4 cirrus_light_blue : source_color = vec4(0.55, 0.72, 0.95, 1.0);
 uniform vec4 cirrus_lavender : source_color = vec4(0.75, 0.68, 0.96, 1.0);
@@ -74,22 +75,22 @@ void sky() {
 	float anti = 1.0 - to_sun;
 	float e = asin(clamp(y, -1.0, 1.0));             // élévation (rad)
 
-	// Dôme : bleu nuit au zénith, bleu, lavande puis rose près de l'horizon.
-	vec3 col = mix(color_horizon.rgb, color_lavender.rgb, smoothstep(0.0, 0.22, e));
-	col = mix(col, color_light_blue.rgb, smoothstep(0.2, 0.45, e));
-	col = mix(col, color_blue.rgb, smoothstep(0.4, 0.85, e));
-	col = mix(col, color_night.rgb, smoothstep(0.8, 1.45, e));
+	// Atmosphère éclairée : côté soleil, le ciel reste bleu (diffusion de Rayleigh), pâle à l'horizon ;
+	// côté opposé, il est dans l'ombre de la Terre : bleu nuit, la partie claire restant près de l'horizon.
+	float lit = smoothstep(-0.3, 0.9, facing);
+	vec3 day = mix(day_horizon.rgb, day_zenith.rgb, smoothstep(0.0, 0.6, e));
+	vec3 night = mix(night_horizon.rgb, night_zenith.rgb, smoothstep(0.0, 0.6, e));
+	vec3 col = mix(night, day, lit);
 
-	// Côté soleil : lueur chaude basse (le soleil vient de se coucher).
-	float glow = exp(-max(e, 0.0) / 0.09) * pow(to_sun, 3.0);
-	col = mix(col, glow_color.rgb, glow * 0.85);
-	col += glow_color.rgb * exp(-max(e, 0.0) / 0.03) * pow(to_sun, 8.0) * 0.6;
+	// Lueur de couchant : seulement très bas, côté soleil.
+	float glow = exp(-max(e, 0.0) / 0.07) * pow(to_sun, 4.0);
+	col = mix(col, glow_color.rgb, glow * 0.45 * lit);
 
-	// Côté opposé : ombre de la Terre (bande bleu-gris basse) surmontée de la ceinture de Vénus (rose).
+	// Ombre de la Terre (côté opposé) : bande bleu nuit sombre, puis ceinture de Vénus rose au-dessus.
 	float shadow_band = 1.0 - smoothstep(shadow_top * 0.6, shadow_top, e);
 	float belt = smoothstep(shadow_top * 0.7, shadow_top * 1.3, e) * (1.0 - smoothstep(shadow_top * 1.6, shadow_top * 3.5, e));
-	col = mix(col, belt_color.rgb, belt * anti * 0.75);
-	col = mix(col, earth_shadow_color.rgb, shadow_band * pow(anti, 0.8));
+	col = mix(col, belt_color.rgb, belt * anti * 0.15);
+	col = mix(col, night_horizon.rgb * 0.6, shadow_band * anti * 0.6);
 
 	// Sous l'horizon : transition douce (le bord lointain de la mer est juste sous l'horizon).
 	col = mix(color_under.rgb, col, smoothstep(-0.25, 0.0, y));
@@ -102,7 +103,7 @@ void sky() {
 	float s = max(sun_dot, 0.0);
 	float sun_up = smoothstep(-0.01, 0.005, sun_elev);
 	col += sun_halo_color.rgb * (pow(s, 8.0) * 0.5 + pow(s, 60.0) * 0.8) * sun_halo_strength * sun_up;
-	col = mix(col, sun_disc_color.rgb * 3.0, smoothstep(0.99985, 0.99993, sun_dot) * sun_up * step(0.0, y));
+	col = mix(col, sun_disc_color.rgb, smoothstep(0.99985, 0.99993, sun_dot) * sun_up * step(0.0, y));
 	s = s * sun_up + pow(to_sun, 3.0) * exp(-max(e, 0.0) / 0.1) * 0.5;   // chaleur des cirrus côté soleil
 
 	// Cirrus : projection sur un plan, étirement d'environ 8x, seuil en traits fins.

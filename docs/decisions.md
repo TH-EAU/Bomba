@@ -116,3 +116,13 @@
   - Le soleil n'apparaît sur l'horizon que si la caméra dépasse l'altitude d'ombre. Son élévation apparente est √(2h/R) − δ, avec R fictif tel que l'horizon s'abaisse de δ à l'altitude d'ombre ; il est posé sur l'horizon plat.
 - **Scène** : `TwilightSun` (lumière directionnelle rasante) n'éclaire que la couche 2, que `Vehicle` ajoute à ses visuels. Son énergie suit `Twilight.SunLit` au niveau du véhicule. La mer et les îlots, dans l'ombre, ne reçoivent que le ciel. La mer a une traînée de reflet de la lueur du couchant (en émissif).
 - Plans fixes ajoutés : 7 « anti-solaire » (ombre de la Terre) et 8 « altitude » (soleil visible).
+
+## 2026-11-08 : reflets parasites et ciel bleu/nuit
+
+- **Colonne lumineuse au-dessus du soleil** : c'était le **bloom** de l'environnement (seuil HDR à 1,2), qui faisait saigner le disque solaire en colonne. Vérifié en coupant le glow : la colonne disparaît. Seuil relevé à 4,0 : seules les vraies sources (éclairs) font halo. Le disque du soleil n'est plus surexposé (×1 au lieu de ×3).
+- **Reflet côté opposé** : le brouillard teintait le ciel en lavande (`FogSkyAffect` 0,15 → 0). Le ciel côté opposé est maintenant bleu nuit.
+- **Ciel** (`sky_dusk.gdshader`) : le dégradé est remplacé par deux teintes, pilotées par l'azimut du soleil :
+  - côté soleil : bleu ciel, pâle vers l'horizon (diffusion) ;
+  - côté opposé : bleu nuit, plus clair vers l'horizon.
+  - La lueur de couchant est réduite au ras de l'horizon ; la ceinture de Vénus est atténuée à 15 %.
+- Les projecteurs n'étaient pas en cause : un test sans eux donne la même colonne.

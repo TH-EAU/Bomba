@@ -81,11 +81,11 @@ public partial class ArenaBuilder : Node3D
             GlowEnabled = true,
             GlowIntensity = 0.5f,
             GlowBloom = 0.0f,
-            GlowHdrThreshold = 1.2f,
+            GlowHdrThreshold = 4.0f,
             FogEnabled = true,
             FogLightColor = new Color(0.72f, 0.62f, 0.85f),
             FogDensity = 0.000015f,
-            FogSkyAffect = 0.15f,
+            FogSkyAffect = 0.0f,
             FogAerialPerspective = 0.5f,
         };
         _root.AddChild(new WorldEnvironment { Environment = environment });
