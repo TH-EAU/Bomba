@@ -86,18 +86,18 @@ public partial class CloudField : Node, IWindSource
 
 	[ExportGroup("Petits cumulus")]
 	[Export] public int CumulusCount { get; set; } = 30;
-	[Export] public float CumulusRadiusMin { get; set; } = 90f;
-	[Export] public float CumulusRadiusMax { get; set; } = 220f;
-	[Export] public float CumulusTopMin { get; set; } = 600f;
-	[Export] public float CumulusTopMax { get; set; } = 1000f;
+	[Export] public float CumulusRadiusMin { get; set; } = 140f;
+	[Export] public float CumulusRadiusMax { get; set; } = 320f;
+	[Export] public float CumulusTopMin { get; set; } = 550f;
+	[Export] public float CumulusTopMax { get; set; } = 850f;
 
 	[ExportGroup("Cumulus congestus")]
 	/// <summary>Congestus par période locale (12 km) : rares.</summary>
 	[Export] public int CongestusCount { get; set; } = 2;
-	[Export] public float CongestusRadiusMin { get; set; } = 250f;
-	[Export] public float CongestusRadiusMax { get; set; } = 450f;
+	[Export] public float CongestusRadiusMin { get; set; } = 300f;
+	[Export] public float CongestusRadiusMax { get; set; } = 500f;
 	[Export] public float CongestusTopMin { get; set; } = 1100f;
-	[Export] public float CongestusTopMax { get; set; } = 2000f;
+	[Export] public float CongestusTopMax { get; set; } = 1900f;
 	[Export] public int CongestusSatellites { get; set; } = 3;
 
 	[ExportGroup("Cumulonimbus (orages)")]
@@ -209,6 +209,12 @@ public partial class CloudField : Node, IWindSource
 	{
 		public float X, Z, Radius, Top;
 		public TowerKind Kind;
+		/// <summary>Lobes d'une tour non orageuse : x, y = décalage horizontal (m), z = altitude du centre (m), w = rayon (m).</summary>
+		public Vector4[] Lobes;
+		/// <summary>Rayon horizontal d'influence des lobes (m).</summary>
+		public float Reach;
+		/// <summary>Penchant du cumulus (décalage horizontal par mètre de hauteur).</summary>
+		public Vector2 Lean;
 		public bool Storm => Kind == TowerKind.Cumulonimbus;
 		/// <summary>Grande colonne qui soulève la nappe à son pied.</summary>
 		public bool Big => Kind != TowerKind.Cumulus;
@@ -520,14 +526,16 @@ public partial class CloudField : Node, IWindSource
 		{
 			float angle = rng.RandfRange(0f, Mathf.Tau);
 			float dist = r * rng.RandfRange(0.85f, 1.5f);
-			_giantTowers.Add(new Tower
+			var sat = new Tower
 			{
 				X = half + Mathf.Cos(angle) * dist,
 				Z = half + Mathf.Sin(angle) * dist,
 				Radius = r * rng.RandfRange(0.08f, 0.17f),
 				Top = rng.RandfRange(1500f, 4500f),
 				Kind = TowerKind.Cumulus,
-			});
+			};
+			BuildLobes(ref sat, rng);
+			_giantTowers.Add(sat);
 		}
 	}
 
@@ -545,14 +553,16 @@ public partial class CloudField : Node, IWindSource
 			{
 				float angle = rng.RandfRange(0f, Mathf.Tau);
 				float dist = big.Radius * rng.RandfRange(0.8f, 1.7f);
-				_localTowers.Add(new Tower
+				var sat = new Tower
 				{
 					X = Mathf.PosMod(big.X + Mathf.Cos(angle) * dist, TileSize),
 					Z = Mathf.PosMod(big.Z + Mathf.Sin(angle) * dist, TileSize),
 					Radius = big.Radius * rng.RandfRange(0.3f, 0.5f),
 					Top = rng.RandfRange(600f, 950f),
 					Kind = TowerKind.Cumulus,
-				});
+				};
+				BuildLobes(ref sat, rng);
+				_localTowers.Add(sat);
 			}
 		}
 
@@ -577,7 +587,10 @@ public partial class CloudField : Node, IWindSource
 			}
 			if (tooClose)
 				continue;
-			_localTowers.Add(new Tower { X = x, Z = z, Radius = r, Top = rng.RandfRange(topMin, topMax), Kind = kind });
+			var tower = new Tower { X = x, Z = z, Radius = r, Top = rng.RandfRange(topMin, topMax), Kind = kind };
+			if (!tower.Storm)
+				BuildLobes(ref tower, rng);
+			_localTowers.Add(tower);
 			added++;
 		}
 	}
@@ -615,7 +628,7 @@ public partial class CloudField : Node, IWindSource
 			{
 				Tower t = _localTowers[ti];
 				float d = WrappedDistance(x, z, t.X, t.Z, tile);
-				if (d >= t.Radius * (t.Big ? 2.6f : 1.3f) + 2f * g.CellXZ)
+				if (d >= Mathf.Max(t.Reach, t.Radius * (t.Big ? 2.6f : 1.3f) + 2f * g.CellXZ))
 					continue;
 				near.Add(ti);
 				if (t.Big)
@@ -660,7 +673,7 @@ public partial class CloudField : Node, IWindSource
 			{
 				Tower t = _giantTowers[ti];
 				float d = WrappedDistance(x, z, t.X, t.Z, tile);
-				float reach = t.Radius * (t.Storm ? Mathf.Max(1f + AnvilSpread, 1.9f) : 1.3f) + 2f * g.CellXZ;
+				float reach = Mathf.Max(t.Reach, t.Radius * (t.Storm ? Mathf.Max(1f + AnvilSpread, 1.9f) : 1.3f) + 2f * g.CellXZ);
 				if (d >= reach)
 					continue;
 				near.Add(ti);
@@ -701,7 +714,8 @@ public partial class CloudField : Node, IWindSource
 			{
 				Tower t = towers[ti];
 				float d = WrappedDistance(x, z, t.X, t.Z, tile);
-				tower = Mathf.Max(tower, TowerBody(t, d, y, warp, ref storm, ref updraft));
+				Vector2 delta = WrappedDelta(x, z, t.X, t.Z, tile);
+				tower = Mathf.Max(tower, TowerBody(t, d, delta, y, warp, ref storm, ref updraft));
 			}
 		}
 
@@ -727,7 +741,7 @@ public partial class CloudField : Node, IWindSource
 	}
 
 	/// <summary>Densité de forme d'une colonne à la distance horizontale d et à l'altitude y.</summary>
-	private float TowerBody(Tower t, float d, float y, float warp, ref float storm, ref float updraft)
+	private float TowerBody(Tower t, float d, Vector2 delta, float y, float warp, ref float storm, ref float updraft)
 	{
 		float height = t.Top - LayerBottom;
 		float h = (y - LayerBottom) / height;
@@ -740,7 +754,7 @@ public partial class CloudField : Node, IWindSource
 			updraft = Mathf.Max(updraft, up);
 		}
 
-		if (h < -0.05f || h > 1.08f)
+		if (h < -0.05f || h > 1.15f)
 			return 0f;
 
 		float dw = d * (1f + 0.45f * warp);
@@ -762,14 +776,23 @@ public partial class CloudField : Node, IWindSource
 		}
 		else
 		{
-			// Cumulus et congestus : effilés vers le haut, sommet en dôme (chou-fleur).
-			float taper = t.Kind == TowerKind.Cumulus ? 0.35f : 0.25f;
-			float radius = t.Radius * (0.9f + 0.1f * SmoothStep(0f, 0.2f, h)) * (1f - taper * SmoothStep(0.15f, 1f, h));
-			float rr = Mathf.Clamp(dw / radius, 0f, 1f);
-			float dome = t.Kind == TowerKind.Cumulus ? 0.4f : 0.28f;
-			float topLocal = 1f - dome * rr * rr;
-			float cap = 1f - SmoothStep(topLocal - 0.12f, topLocal, h);
-			return (1f - SmoothStep(0.4f * radius, 1.1f * radius, dw)) * cap * SmoothStep(-0.05f, 0.04f, h);
+			// Amas de lobes soudés : noyau continu (base → 0,75 H, suit le penchant) + lobes bourgeonnants,
+			// unis en douceur (1 − Π(1 − b)) pour éviter les boules détachées (« bonhomme de neige »).
+			float keep = 1f;
+			float hc = Mathf.Clamp(h, 0f, 0.75f) / 0.75f;
+			Vector2 axis = t.Lean * (Mathf.Clamp(h, 0f, 1f) * height);
+			float coreR = t.Radius * Mathf.Lerp(0.55f, 0.3f, hc);
+			float coreD = (delta - axis).Length() * (1f + 0.35f * warp);
+			float core = (1f - SmoothStep(0.5f * coreR, coreR, coreD)) * (1f - SmoothStep(0.65f, 0.8f, h));
+			keep *= 1f - core;
+			foreach (Vector4 lobe in t.Lobes)
+			{
+				float dx = delta.X - lobe.X, dz = delta.Y - lobe.Y;
+				float dy = (y - lobe.Z) / 0.9f;
+				float dist = Mathf.Sqrt(dx * dx + dy * dy + dz * dz) * (1f + 0.35f * warp);
+				keep *= 1f - (1f - SmoothStep(0.5f * lobe.W, lobe.W, dist));
+			}
+			return (1f - keep) * SmoothStep(-0.05f, 0.04f, h);
 		}
 	}
 
@@ -781,6 +804,56 @@ public partial class CloudField : Node, IWindSource
 		dx = Mathf.Min(dx, tile - dx);
 		dz = Mathf.Min(dz, tile - dz);
 		return Mathf.Sqrt(dx * dx + dz * dz);
+	}
+
+	/// <summary>Amas de lobes d'une tour non orageuse : lobe de base large, lobe sommital petit, lobes intermédiaires concentrés vers le bas.</summary>
+	private void BuildLobes(ref Tower t, RandomNumberGenerator rng)
+	{
+		float height = t.Top - LayerBottom;
+		int count = t.Kind == TowerKind.Cumulus ? rng.RandiRange(5, 8) : rng.RandiRange(8, 13);
+		float leanAngle = rng.RandfRange(0f, Mathf.Tau);
+		Vector2 lean = new Vector2(Mathf.Cos(leanAngle), Mathf.Sin(leanAngle)) * rng.RandfRange(0f, 0.25f);
+
+		var lobes = new Vector4[count];
+		float reach = 0f;
+		for (int i = 0; i < count; i++)
+		{
+			Vector4 lobe;
+			if (i == 0)
+			{
+				lobe = new Vector4(0f, 0f, LayerBottom + 0.08f * height, 0.85f * t.Radius);
+			}
+			else if (i == count - 1)
+			{
+				Vector2 top = lean * (0.9f * height);
+				lobe = new Vector4(top.X, top.Y, LayerBottom + 0.9f * height, 0.3f * t.Radius);
+			}
+			else
+			{
+				// Hauteurs stratifiées : chaque lobe dans sa tranche de [0,1 ; 0,85] (pas de trou vertical).
+				float slot = (i - 1 + rng.RandfRange(0f, 1f)) / Mathf.Max(count - 2, 1);
+				float f = 0.1f + 0.75f * slot;
+				float r = t.Radius * Mathf.Lerp(1.0f, 0.45f, f) * rng.RandfRange(0.8f, 1.2f);
+				float angle = rng.RandfRange(0f, Mathf.Tau);
+				float spread = t.Radius * (1f - f) * rng.RandfRange(0f, 0.5f);
+				Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * spread + lean * (f * height);
+				lobe = new Vector4(offset.X, offset.Y, LayerBottom + f * height, r);
+			}
+			lobes[i] = lobe;
+			reach = Mathf.Max(reach, new Vector2(lobe.X, lobe.Y).Length() + lobe.W);
+		}
+		t.Lobes = lobes;
+		t.Lean = lean;
+		t.Reach = Mathf.Ceil(reach);
+	}
+
+	/// <summary>Écart (x0 − x1, z0 − z1) ramené dans [−tile/2, tile/2] sur chaque axe.</summary>
+	private static Vector2 WrappedDelta(float x0, float z0, float x1, float z1, float tile)
+	{
+		float dx = x0 - x1, dz = z0 - z1;
+		dx -= tile * Mathf.Round(dx / tile);
+		dz -= tile * Mathf.Round(dz / tile);
+		return new Vector2(dx, dz);
 	}
 
 	private static float SmoothStep(float a, float b, float x)

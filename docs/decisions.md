@@ -95,3 +95,13 @@
 | Rafiot | ≈ 57 m/s | ≈ 89 m/s | chute franche, autorité ≈ 0,07 |
 | Zeppelin | ≈ 12 m/s | ≈ 25 m/s | flotte (ballon), dérive au vent |
 | Guêpe | ≈ 63 m/s (fusée, 3 s) | ≈ 86 m/s | le rotor garde le stationnaire, autorité ≈ 0,5 |
+
+## 2026-11-08 : cumulus en amas de lobes soudés (M13 + correction)
+
+- Les petits cumulus et les congestus ne sont plus des cylindres coiffés d'un dôme. Ce sont des **amas de 5 à 13 lobes** (`Tower.Lobes`, `BuildLobes`), avec un léger penchant propre à chaque nuage (`Tower.Lean`).
+- La première version (M13, Haiku) donnait des **boules empilées détachées** (« bonhomme de neige »). Correction :
+  - union douce `1 − Π(1 − b)` au lieu de `max` ;
+  - **noyau continu** de la base à 0,75 H, qui suit le penchant ;
+  - lobes plus gros (rayon de 1,0 R à 0,45 R) à hauteurs stratifiées ;
+  - aplatissement plus faible (`dy / 0.9`).
+- Calcul au démarrage : 2,2 s. SDF : 0 surestimation. 60 FPS après le démarrage.
