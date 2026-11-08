@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://Scripts/Clouds/CloudField.cs" id="1_field"]
+[ext_resource type="Script" path="res://Scripts/Debug/CloudProbe.cs" id="2_probe"]
+
+[node name="CloudProbe" type="Node"]
+
+[node name="CloudField" type="Node" parent="."]
+script = ExtResource("1_field")
+
+[node name="Probe" type="Node" parent="."]
+script = ExtResource("2_probe")

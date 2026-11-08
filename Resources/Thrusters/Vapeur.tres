@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ThrusterProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://Scripts/Vehicles/Modules/ThrusterProfile.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+DisplayName = "Vapeur"
+MaxThrust = 320.0
+SpoolUpTime = 0.5
+SpoolDownTime = 0.4
+GimbalDegrees = 20.0
+HeatPerSecond = 0.25
+CoolPerSecond = 0.3
+OverheatThrustFactor = 0.3
+FuelSeconds = 0.0
+FuelRegenPerSecond = 0.2
+ExhaustColor = Color(0.9, 0.9, 0.9, 1)
+FlameColor = Color(1, 0.8, 0.5, 1)

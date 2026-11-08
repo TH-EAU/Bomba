@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ThrusterProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://Scripts/Vehicles/Modules/ThrusterProfile.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+DisplayName = "Fusée à poudre"
+MaxThrust = 650.0
+SpoolUpTime = 0.05
+SpoolDownTime = 0.05
+GimbalDegrees = 10.0
+HeatPerSecond = 0.0
+CoolPerSecond = 0.3
+OverheatThrustFactor = 0.3
+FuelSeconds = 3.0
+FuelRegenPerSecond = 0.2
+ExhaustColor = Color(0.55, 0.5, 0.45, 1)
+FlameColor = Color(1, 0.6, 0.2, 1)

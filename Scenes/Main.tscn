@@ -1,0 +1,78 @@
+[gd_scene load_steps=15 format=3]
+
+[ext_resource type="Script" path="res://Scripts/Core/GameRoot.cs" id="1_root"]
+[ext_resource type="Script" path="res://Scripts/Arena/ArenaBuilder.cs" id="2_arena"]
+[ext_resource type="Script" path="res://Scripts/Vehicles/PlayerVehicleController.cs" id="3_ctrl"]
+[ext_resource type="Script" path="res://Scripts/Camera/ChaseCamera.cs" id="4_cam"]
+[ext_resource type="Script" path="res://Scripts/Debug/DebugHud.cs" id="5_hud"]
+[ext_resource type="Script" path="res://Scripts/Debug/ForceGizmos.cs" id="6_giz"]
+[ext_resource type="PackedScene" path="res://Scenes/Vehicles/Rafiot.tscn" id="7_rafiot"]
+[ext_resource type="PackedScene" path="res://Scenes/Vehicles/Zeppelin.tscn" id="8_zeppelin"]
+[ext_resource type="PackedScene" path="res://Scenes/Vehicles/Guepe.tscn" id="9_guepe"]
+[ext_resource type="Script" path="res://Scripts/Clouds/CloudField.cs" id="10_clouds"]
+[ext_resource type="Script" path="res://Scripts/Clouds/CloudEffects.cs" id="11_cloudfx"]
+[ext_resource type="Script" path="res://Scripts/Arena/Searchlight.cs" id="12_searchlight"]
+[ext_resource type="Script" path="res://Scripts/Clouds/LightningSystem.cs" id="13_lightning"]
+[ext_resource type="Script" path="res://Scripts/Effects/ScreenDroplets.cs" id="14_droplets"]
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_root")
+SpawnPoint = NodePath("SpawnPoint")
+VehicleScenes = Array[PackedScene]([ExtResource("7_rafiot"), ExtResource("8_zeppelin"), ExtResource("9_guepe")])
+
+[node name="Arena" type="Node3D" parent="."]
+script = ExtResource("2_arena")
+
+[node name="Clouds" type="Node" parent="."]
+script = ExtResource("10_clouds")
+
+[node name="CloudEffects" type="Node" parent="."]
+script = ExtResource("11_cloudfx")
+
+[node name="Searchlights" type="Node3D" parent="."]
+
+[node name="SearchlightNord" type="Node3D" parent="Searchlights"]
+position = Vector3(-180, 35, -420)
+rotation_degrees = Vector3(0, 180, 0)
+script = ExtResource("12_searchlight")
+PillarHeight = 100.0
+BeamPitchDegrees = 28.0
+Range = 1100.0
+
+[node name="SearchlightEst" type="Node3D" parent="Searchlights"]
+position = Vector3(300, 25, -260)
+rotation_degrees = Vector3(0, 130, 0)
+script = ExtResource("12_searchlight")
+PillarHeight = 100.0
+BeamPitchDegrees = 28.0
+Range = 1100.0
+
+[node name="SearchlightSud" type="Node3D" parent="Searchlights"]
+position = Vector3(80, 40, 400)
+script = ExtResource("12_searchlight")
+PillarHeight = 100.0
+BeamPitchDegrees = 28.0
+Range = 1100.0
+
+[node name="SpawnPoint" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 200, 0)
+
+[node name="PlayerController" type="Node" parent="."]
+script = ExtResource("3_ctrl")
+
+[node name="ChaseCamera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 64, 14)
+far = 90000.0
+script = ExtResource("4_cam")
+
+[node name="DebugHud" type="CanvasLayer" parent="."]
+script = ExtResource("5_hud")
+
+[node name="ForceGizmos" type="Node3D" parent="."]
+script = ExtResource("6_giz")
+
+[node name="LightningSystem" type="Node3D" parent="."]
+script = ExtResource("13_lightning")
+
+[node name="ScreenDroplets" type="CanvasLayer" parent="."]
+script = ExtResource("14_droplets")

@@ -1,0 +1,104 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://Scripts/Vehicles/Vehicle.cs" id="1_vehicle"]
+[ext_resource type="Script" path="res://Scripts/Vehicles/Modules/Balloon.cs" id="2_balloon"]
+[ext_resource type="Script" path="res://Scripts/Vehicles/Modules/Propeller.cs" id="3_propeller"]
+[ext_resource type="Script" path="res://Scripts/Vehicles/Modules/Sail.cs" id="4_sail"]
+[ext_resource type="Script" path="res://Scripts/Vehicles/Modules/AeroSurface.cs" id="5_aero"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_nacelle"]
+size = Vector3(2.4, 1.6, 6)
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_envelope"]
+radius = 4.0
+
+[sub_resource type="StandardMaterial3D" id="Mat_wood"]
+albedo_color = Color(0.45, 0.32, 0.2, 1)
+roughness = 0.8
+
+[node name="Zeppelin" type="RigidBody3D"]
+script = ExtResource("1_vehicle")
+DisplayName = "Le Zeppelin"
+mass = 30.0
+gravity_scale = 1.0
+angular_damp = 2.0
+CenterOfMassOffset = Vector3(0, -1, 0)
+ForwardDrag = 0.03
+LateralGripPowered = 1.0
+VerticalGripPowered = 0.6
+MaxTurnRates = Vector3(0.5, 0.6, 0.8)
+RollAssist = 3.0
+AutoBankDegrees = 10.0
+AirWeight = 0.3
+HoverAssist = 0.0
+PitchAutoLevel = true
+
+[node name="NacelleCollision" type="CollisionShape3D" parent="."]
+shape = SubResource("BoxShape3D_nacelle")
+
+[node name="EnvelopeCollision" type="CollisionShape3D" parent="."]
+position = Vector3(0, 6, 0)
+shape = SubResource("SphereShape3D_envelope")
+
+[node name="Nacelle" type="CSGBox3D" parent="."]
+size = Vector3(2.4, 1.4, 6)
+material = SubResource("Mat_wood")
+
+[node name="Cord1" type="CSGCylinder3D" parent="."]
+position = Vector3(1.25, 1.85, 2.25)
+rotation_degrees = Vector3(17.1, 135, 0)
+radius = 0.05
+height = 2.41
+material = SubResource("Mat_wood")
+
+[node name="Cord2" type="CSGCylinder3D" parent="."]
+position = Vector3(-1.25, 1.85, 2.25)
+rotation_degrees = Vector3(17.1, -135, 0)
+radius = 0.05
+height = 2.41
+material = SubResource("Mat_wood")
+
+[node name="Cord3" type="CSGCylinder3D" parent="."]
+position = Vector3(1.25, 1.85, -2.25)
+rotation_degrees = Vector3(17.1, 45, 0)
+radius = 0.05
+height = 2.41
+material = SubResource("Mat_wood")
+
+[node name="Cord4" type="CSGCylinder3D" parent="."]
+position = Vector3(-1.25, 1.85, -2.25)
+rotation_degrees = Vector3(17.1, -45, 0)
+radius = 0.05
+height = 2.41
+material = SubResource("Mat_wood")
+
+[node name="Envelope" type="Node3D" parent="."]
+position = Vector3(0, 6, 0)
+script = ExtResource("2_balloon")
+Mode = 1
+Channel = 2
+LiftForce = 490.0
+BaseHeat = 0.6
+HeatChangeTime = 3.0
+AirDrag = 8.0
+Radius = 4.0
+
+[node name="Propeller" type="Node3D" parent="."]
+position = Vector3(0, 0, 3.4)
+script = ExtResource("3_propeller")
+MaxThrust = 250.0
+MaxEffectiveSpeed = 30.0
+BladeRadius = 1.4
+
+[node name="Sail" type="Node3D" parent="."]
+position = Vector3(0, 0.8, -1.5)
+script = ExtResource("4_sail")
+SailCoefficient = 3.0
+MaxForce = 500.0
+Size = Vector2(3.5, 3.5)
+
+[node name="Keel" type="Node3D" parent="."]
+position = Vector3(0, -0.5, 0)
+script = ExtResource("5_aero")
+LiftCoefficient = 0.0
+DragCoefficient = 0.05

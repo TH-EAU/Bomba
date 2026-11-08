@@ -1,0 +1,84 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://Scripts/Vehicles/Vehicle.cs" id="1_vehicle"]
+[ext_resource type="Script" path="res://Scripts/Vehicles/Modules/Propeller.cs" id="2_propeller"]
+[ext_resource type="Script" path="res://Scripts/Vehicles/Modules/Thruster.cs" id="3_thruster"]
+[ext_resource type="Script" path="res://Scripts/Vehicles/Modules/AeroSurface.cs" id="4_aero"]
+[ext_resource type="Resource" path="res://Resources/Thrusters/Fusee.tres" id="5_fusee"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_collision"]
+size = Vector3(1.6, 1.4, 4.5)
+
+[sub_resource type="StandardMaterial3D" id="Mat_body"]
+albedo_color = Color(0.85, 0.65, 0.1, 1)
+roughness = 0.6
+
+[sub_resource type="StandardMaterial3D" id="Mat_black"]
+albedo_color = Color(0.08, 0.08, 0.08, 1)
+roughness = 0.6
+
+[node name="Guepe" type="RigidBody3D"]
+script = ExtResource("1_vehicle")
+DisplayName = "La Guêpe"
+mass = 10.0
+gravity_scale = 1.4
+angular_damp = 2.0
+CenterOfMassOffset = Vector3(0, -0.4, 0)
+ForwardDrag = 0.015
+PowerWeight = 3.0
+MaxTurnRates = Vector3(1.8, 1.8, 2.5)
+HoverAssist = 0.0
+LateralGripPowered = 0.8
+VerticalGripPowered = 0.4
+PitchAutoLevel = true
+RollAssist = 14.0
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+shape = SubResource("BoxShape3D_collision")
+
+[node name="Fuselage" type="CSGBox3D" parent="."]
+size = Vector3(1.4, 1.2, 4)
+material = SubResource("Mat_body")
+
+[node name="StripeHigh" type="CSGBox3D" parent="."]
+position = Vector3(0, 0.2, 0)
+size = Vector3(1.44, 0.12, 4.02)
+material = SubResource("Mat_black")
+
+[node name="StripeLow" type="CSGBox3D" parent="."]
+position = Vector3(0, -0.2, 0)
+size = Vector3(1.44, 0.12, 4.02)
+material = SubResource("Mat_black")
+
+[node name="Cockpit" type="CSGSphere3D" parent="."]
+position = Vector3(0, 0.6, -1)
+radius = 0.6
+material = SubResource("Mat_black")
+
+[node name="Mast" type="CSGCylinder3D" parent="."]
+position = Vector3(0, 1.05, 0)
+radius = 0.05
+height = 0.9
+material = SubResource("Mat_black")
+
+[node name="Rotor" type="Node3D" parent="."]
+position = Vector3(0, 1.6, 0)
+rotation_degrees = Vector3(90, 0, 0)
+script = ExtResource("2_propeller")
+Channel = 2
+MaxThrust = 220.0
+BaseLevel = 0.62
+MaxEffectiveSpeed = 25.0
+BladeRadius = 2.2
+SpoolTime = 0.3
+
+[node name="Rocket" type="Node3D" parent="."]
+position = Vector3(0, -0.4, 2.4)
+script = ExtResource("3_thruster")
+Profile = ExtResource("5_fusee")
+
+[node name="Body" type="Node3D" parent="."]
+script = ExtResource("4_aero")
+LiftCoefficient = 0.05
+MaxLift = 120.0
+DragCoefficient = 0.01
