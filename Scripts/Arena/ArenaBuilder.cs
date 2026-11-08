@@ -90,15 +90,14 @@ public partial class ArenaBuilder : Node3D
         };
         _root.AddChild(new WorldEnvironment { Environment = environment });
 
-        // Soleil bas vers -Z : la lumière (-Z local) va vers +Z et descend de 7 degrés.
-        _root.AddChild(new DirectionalLight3D
-        {
-            Rotation = new Vector3(Mathf.DegToRad(-7f), Mathf.DegToRad(180f), 0f),
-            ShadowEnabled = true,
-            DirectionalShadowMaxDistance = 600f,
-            LightColor = new Color(1f, 0.74f, 0.8f),
-            LightEnergy = 1.1f,
-        });
+        // Crépuscule (soleil couché, ombre de la Terre) : paramètres partagés via Twilight.
+        Vector2 az = Twilight.SunAzimuth.Normalized();
+        sky.SetShaderParameter("sun_azimuth", az);
+        sky.SetShaderParameter("sun_depression", Twilight.Depression);
+        sky.SetShaderParameter("earth_radius", Twilight.EarthRadius);
+
+        // Soleil rasant : n'éclaire que les véhicules au-dessus de l'ombre (voir TwilightSun).
+        _root.AddChild(new TwilightSun());
     }
 
     private void BuildSea()

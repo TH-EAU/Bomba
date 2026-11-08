@@ -151,8 +151,20 @@ public partial class Vehicle : RigidBody3D
 		CenterOfMassMode = CenterOfMassModeEnum.Custom;
 		CenterOfMass = CenterOfMassOffset;
 		_gravity = (float)ProjectSettings.GetSetting("physics/3d/default_gravity", 9.8f);
+		// Couche 2 : seuls les véhicules reçoivent le soleil rasant du crépuscule (TwilightSun).
+		AddVehicleLayer(this);
 		CanSleep = false;
 		CollectModules(this);
+	}
+
+	private static void AddVehicleLayer(Node node)
+	{
+		foreach (Node child in node.GetChildren())
+		{
+			if (child is VisualInstance3D vi)
+				vi.Layers |= TwilightSun.VehicleLayer;
+			AddVehicleLayer(child);
+		}
 	}
 
 	private void CollectModules(Node node)

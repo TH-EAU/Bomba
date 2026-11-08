@@ -316,19 +316,12 @@ public partial class CloudField : Node, IWindSource
 
 	private void UpdateRenderer()
 	{
-		if (_sun == null || !IsInstanceValid(_sun))
-		{
-			foreach (Node n in GetTree().Root.FindChildren("*", "DirectionalLight3D", true, false))
-				if (n is DirectionalLight3D l && l.Visible) { _sun = l; break; }
-		}
-
+		// Soleil du crépuscule (statique) : direction rasante, éclaire seulement au-dessus de l'ombre de la Terre.
 		CloudRenderer r = Renderer;
-		if (_sun != null)
-		{
-			r.SunDirection = _sun.GlobalBasis.Z.Normalized();
-			r.SunColor = _sun.LightColor;
-			r.SunIntensity = _sun.LightEnergy * SunIntensityScale;
-		}
+		r.SunDirection = Twilight.SunDirection;
+		r.SunColor = Twilight.SunColor;
+		r.SunIntensity = SunIntensityScale;
+		r.Shadow = new Vector4(Twilight.ShadowAltitude, Mathf.Tan(Twilight.Depression), Twilight.SunAzimuth.Normalized().X, Twilight.SunAzimuth.Normalized().Y);
 		r.Offset = Offset;
 		r.Extinction = Extinction;
 		r.NearFade = NearFadeDistance;

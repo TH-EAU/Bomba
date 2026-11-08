@@ -19,7 +19,7 @@ public partial class CloudRenderer : CompositorEffect
     private const string Context = "bomba_clouds";
     private const int ShapeNoiseSize = 64;
     private const int DetailNoiseSize = 32;
-    private const int ParamsBytes = 416;
+    private const int ParamsBytes = 432;
 
     // --- Paramètres (écrits par CloudField) ---
     public byte[] CloudData;
@@ -55,6 +55,8 @@ public partial class CloudRenderer : CompositorEffect
     public float GiantTileSize = 49152f, GiantMaxAltitude = 14000f, GiantVerticalExponent = 2.2f;
     /// <summary>Coin du domaine géant dans le monde (hors dérive) : la grille géante ne se répète pas.</summary>
     public Vector2 GiantOrigin;
+    /// <summary>Ombre de la Terre : x altitude à l'origine, y tan(abaissement), zw azimut du soleil.</summary>
+    public Vector4 Shadow = new(1e6f, 0f, 0f, -1f);
     /// <summary>LOD du bruit : distances (m) au-delà desquelles le détail fin / les bourgeons ne sont plus calculés.</summary>
     public float LodFineDistance = 6000f, LodShapeDistance = 20000f;
 
@@ -313,6 +315,7 @@ public partial class CloudRenderer : CompositorEffect
         Add(f, TemporalBlend, historyValid ? 1f : 0f, VerticalExponent, StepGrowthDistance);
         Add(f, GiantTileSize, MinAltitude, GiantMaxAltitude, GiantVerticalExponent);
         Add(f, GiantOrigin.X, GiantOrigin.Y, LodFineDistance, LodShapeDistance);
+        Add(f, Shadow.X, Shadow.Y, Shadow.Z, Shadow.W);
 
         var bytes = new byte[ParamsBytes];
         Buffer.BlockCopy(f.ToArray(), 0, bytes, 0, Math.Min(bytes.Length, f.Count * 4));

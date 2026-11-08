@@ -26,6 +26,10 @@ uniform float roughness_near : hint_range(0.0, 1.0) = 0.16;
 uniform float roughness_far : hint_range(0.0, 1.0) = 0.32;
 
 // Points lumineux fixes dans le monde.
+uniform vec2 sun_azimuth = vec2(0.0, -1.0);
+uniform vec4 trail_color : source_color = vec4(0.82, 0.74, 0.98, 1.0);
+uniform float trail_strength = 0.9;
+
 uniform vec4 dot_color : source_color = vec4(0.95, 0.9, 0.75, 1.0);
 uniform float dot_spacing = 18.0;
 uniform float dot_radius = 0.45;
@@ -105,6 +109,13 @@ void fragment() {
 	float twinkle = 0.6 + 0.4 * sin(TIME * (0.8 + r * 1.7) + r * 50.0);
 	float fade = 1.0 - smoothstep(dot_fade_start, dot_fade_end, dist);
 	emission += dot_color.rgb * disc * present * twinkle * dot_brightness * fade;
+
+	// Traînée de reflet : la lueur du couchant (azimut du soleil) reflétée par les vagues.
+	vec3 v_world = normalize(cam - world_pos);
+	vec3 r_world = reflect(-v_world, n_world);
+	float along_sun = max(dot(normalize(r_world.xz + 1e-5), sun_azimuth), 0.0);
+	float trail = pow(along_sun, 120.0) * smoothstep(-0.02, 0.06, r_world.y) * (1.0 - smoothstep(0.2, 0.45, r_world.y));
+	emission += trail_color.rgb * trail * trail_strength;
 
 	EMISSION = emission;
 }

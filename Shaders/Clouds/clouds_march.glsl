@@ -39,6 +39,7 @@ layout(set = 0, binding = 5, std140) uniform Params {
     vec4 temporal;                // x,y passe temporelle ; z exposant vertical local ; w croissance du pas (m)
     vec4 giant_volume;            // x periode, y alt min, z alt max, w exposant vertical (grille geante)
     vec4 giant_origin;            // xy coin du domaine geant (sans repetition), z LOD detail fin (m), w LOD bourgeons (m)
+    vec4 earth_shadow;            // x altitude de l ombre a l origine, y tan(abaissement), zw azimut du soleil
 } p;
 
 const float PI = 3.14159265;
@@ -301,7 +302,10 @@ void main() {
             // Diffusion multiple approchee (octaves de Wrenninge) : coeur moins noir, bords contrastes.
             float beer = exp(-od) + 0.1 * exp(-od * 0.25) + 0.03 * exp(-od * 0.06);
             float powder = 1.0 - exp(-2.0 * od - 0.1);
-            vec3 sun_l = sun_col * beer * mix(1.0, powder, 0.6) * phase * (1.0 - 0.92 * storm);
+            // Ombre de la Terre : le soleil couche n eclaire que ce qui depasse le plan d ombre incline.
+            float shadow_h = p.earth_shadow.x - dot(pos.xz, p.earth_shadow.zw) * p.earth_shadow.y;
+            float sunlit = smoothstep(-60.0, 60.0, pos.y - shadow_h);
+            vec3 sun_l = sun_col * beer * mix(1.0, powder, 0.6) * phase * (1.0 - 0.92 * storm) * sunlit;
 
             // Occlusion ambiante par le SDF : plus on est profond dans le nuage, moins le ciel eclaire.
             float ao = clamp(1.0 + sdf / 150.0, 0.2, 1.0);

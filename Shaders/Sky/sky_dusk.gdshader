@@ -26,6 +26,16 @@ uniform float sun_halo_strength = 0.25;
 uniform float star_strength = 0.5;
 uniform float sky_energy = 1.0;
 
+// Crépuscule (renseignés par ArenaBuilder depuis Twilight).
+uniform vec2 sun_azimuth = vec2(0.0, -1.0);
+uniform float sun_depression = 0.021;
+uniform float earth_radius = 5.9e6;
+// Hauteur angulaire (rad) du haut de l ombre de la Terre côté opposé au soleil.
+uniform float shadow_top = 0.09;
+uniform vec4 glow_color : source_color = vec4(1.0, 0.62, 0.52, 1.0);
+uniform vec4 belt_color : source_color = vec4(0.96, 0.68, 0.8, 1.0);
+uniform vec4 earth_shadow_color : source_color = vec4(0.3, 0.36, 0.62, 1.0);
+
 float hash12(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
@@ -57,25 +67,43 @@ void sky() {
 	vec3 dir = EYEDIR;
 	float y = dir.y;
 
-	// Dégradé d'élévation : rose à l'horizon, lavande vers 15°, bleu clair, bleu, bleu nuit au zénith.
-	vec3 col = color_horizon.rgb;
-	col = mix(col, color_lavender.rgb, smoothstep(0.0, 0.26, y));
-	col = mix(col, color_light_blue.rgb, smoothstep(0.26, 0.42, y));
-	col = mix(col, color_blue.rgb, smoothstep(0.42, 0.7, y));
-	col = mix(col, color_night.rgb, smoothstep(0.7, 1.0, y));
+	// --- Crépuscule : soleil couché de sun_depression, ombre de la Terre (voir Scripts/Core/Twilight.cs) ---
+	vec2 dxz = length(dir.xz) > 1e-4 ? normalize(dir.xz) : sun_azimuth;
+	float facing = dot(dxz, sun_azimuth);          // 1 côté soleil, -1 côté opposé
+	float to_sun = 0.5 + 0.5 * facing;
+	float anti = 1.0 - to_sun;
+	float e = asin(clamp(y, -1.0, 1.0));             // élévation (rad)
+
+	// Dôme : bleu nuit au zénith, bleu, lavande puis rose près de l'horizon.
+	vec3 col = mix(color_horizon.rgb, color_lavender.rgb, smoothstep(0.0, 0.22, e));
+	col = mix(col, color_light_blue.rgb, smoothstep(0.2, 0.45, e));
+	col = mix(col, color_blue.rgb, smoothstep(0.4, 0.85, e));
+	col = mix(col, color_night.rgb, smoothstep(0.8, 1.45, e));
+
+	// Côté soleil : lueur chaude basse (le soleil vient de se coucher).
+	float glow = exp(-max(e, 0.0) / 0.09) * pow(to_sun, 3.0);
+	col = mix(col, glow_color.rgb, glow * 0.85);
+	col += glow_color.rgb * exp(-max(e, 0.0) / 0.03) * pow(to_sun, 8.0) * 0.6;
+
+	// Côté opposé : ombre de la Terre (bande bleu-gris basse) surmontée de la ceinture de Vénus (rose).
+	float shadow_band = 1.0 - smoothstep(shadow_top * 0.6, shadow_top, e);
+	float belt = smoothstep(shadow_top * 0.7, shadow_top * 1.3, e) * (1.0 - smoothstep(shadow_top * 1.6, shadow_top * 3.5, e));
+	col = mix(col, belt_color.rgb, belt * anti * 0.75);
+	col = mix(col, earth_shadow_color.rgb, shadow_band * pow(anti, 0.8));
+
 	// Sous l'horizon : transition douce (le bord lointain de la mer est juste sous l'horizon).
 	col = mix(color_under.rgb, col, smoothstep(-0.25, 0.0, y));
 
-	// Soleil : halo doux pêche et disque discret, direction LIGHT0_DIRECTION (vers le soleil).
-	float sun_dot = 0.0;
-	if (LIGHT0_ENABLED) {
-		sun_dot = dot(dir, LIGHT0_DIRECTION);
-	}
+	// Soleil : n'apparaît que si la caméra dépasse l'ombre de la Terre (élévation apparente = abaissement
+	// de l'horizon − abaissement du soleil), posé sur l'horizon plat de la mer.
+	float sun_elev = sqrt(2.0 * max(POSITION.y, 0.0) / earth_radius) - sun_depression;
+	vec3 sun_dir = vec3(sun_azimuth.x * cos(sun_elev), sin(sun_elev), sun_azimuth.y * cos(sun_elev));
+	float sun_dot = dot(dir, sun_dir);
 	float s = max(sun_dot, 0.0);
-	float halo = pow(s, 5.0) * 0.45 + pow(s, 30.0) * 0.35;
-	col += sun_halo_color.rgb * halo * sun_halo_strength;
-	float disc = smoothstep(0.9996, 0.9998, sun_dot);
-	col = mix(col, sun_disc_color.rgb, disc);
+	float sun_up = smoothstep(-0.01, 0.005, sun_elev);
+	col += sun_halo_color.rgb * (pow(s, 8.0) * 0.5 + pow(s, 60.0) * 0.8) * sun_halo_strength * sun_up;
+	col = mix(col, sun_disc_color.rgb * 3.0, smoothstep(0.99985, 0.99993, sun_dot) * sun_up * step(0.0, y));
+	s = s * sun_up + pow(to_sun, 3.0) * exp(-max(e, 0.0) / 0.1) * 0.5;   // chaleur des cirrus côté soleil
 
 	// Cirrus : projection sur un plan, étirement d'environ 8x, seuil en traits fins.
 	float cirrus = 0.0;

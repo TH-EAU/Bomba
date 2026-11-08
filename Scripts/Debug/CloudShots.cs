@@ -8,7 +8,8 @@ namespace Bomba.DebugTools;
 /// <summary>
 /// Prises de vue fixes des nuages pour le réglage artistique. Chaque plan dure <see cref="FramesPerShot"/>
 /// frames ; à capturer avec <c>--write-movie</c>. Le plan k occupe les frames [k×N, k×N + N − 1].
-/// Plans : 0 dessus, 1 tour, 2 dedans, 3 dessous, 4 orage (avec éclair), 5 contre-jour, 6 panorama.
+/// Plans : 0 dessus, 1 tour, 2 dedans, 3 dessous, 4 orage (avec éclair), 5 contre-jour, 6 panorama,
+/// 7 anti-solaire (ombre de la Terre), 8 altitude (au-dessus de l'ombre, soleil visible).
 /// </summary>
 public partial class CloudShots : Node
 {
@@ -78,6 +79,11 @@ public partial class CloudShots : Node
         // Panorama : un cumulonimbus vu de loin, pour juger sa hauteur totale.
         _shots.Add(("panorama", Toward(Vector3.Zero, stormMid, storm.Radius * 3f + 15000f) with { Y = f.LayerTop + 900f },
             stormMid with { Y = storm.Top * 0.45f }, false));
+        // Crépuscule : dos au soleil (ombre de la Terre, ceinture de Vénus), puis au-dessus de l'ombre face au soleil.
+        Vector3 toSun = new(Bomba.Core.Twilight.SunAzimuth.X, 0f, Bomba.Core.Twilight.SunAzimuth.Y);
+        _shots.Add(("anti-solaire", new Vector3(0, above, 0), new Vector3(0, above, 0) - toSun * 1000f + Vector3.Up * 120f, false));
+        Vector3 high = new(0, Bomba.Core.Twilight.ShadowAltitude + 900f, 0);
+        _shots.Add(("altitude", high, high + toSun * 1000f - Vector3.Up * 40f, false));
 
         // Les gouttes d'écran dépendent du véhicule (qui traverse des nuages) : masquées pour les plans fixes.
         if (GetTree().Root.FindChild("ScreenDroplets", true, false) is CanvasLayer droplets)

@@ -105,3 +105,14 @@
   - lobes plus gros (rayon de 1,0 R à 0,45 R) à hauteurs stratifiées ;
   - aplatissement plus faible (`dy / 0.9`).
 - Calcul au démarrage : 2,2 s. SDF : 0 surestimation. 60 FPS après le démarrage.
+
+## 2026-11-08 : crépuscule et ombre de la Terre
+
+- **Soleil couché de 1,2°, statique.** La source de vérité est `Scripts/Core/Twilight.cs`. L'ombre de la Terre est un **plan incliné**, sans aucune courbure de la géométrie : l'altitude d'ombre vaut environ 1 300 m à l'origine et baisse vers le soleil (pente tan 1,2°).
+- **Nuages** : le soleil n'éclaire que la partie au-dessus du plan, avec ±60 m de pénombre (`earth_shadow` dans le tampon). En dessous, la lumière vient du ciel seul : les tours sont roses au sommet et bleu-lavande en bas.
+- **Ciel** (`sky_dusk.gdshader`) :
+  - lueur chaude côté soleil ;
+  - côté opposé, bande bleu-gris de l'ombre de la Terre (jusqu'à environ 5°) et ceinture de Vénus rose au-dessus.
+  - Le soleil n'apparaît sur l'horizon que si la caméra dépasse l'altitude d'ombre. Son élévation apparente est √(2h/R) − δ, avec R fictif tel que l'horizon s'abaisse de δ à l'altitude d'ombre ; il est posé sur l'horizon plat.
+- **Scène** : `TwilightSun` (lumière directionnelle rasante) n'éclaire que la couche 2, que `Vehicle` ajoute à ses visuels. Son énergie suit `Twilight.SunLit` au niveau du véhicule. La mer et les îlots, dans l'ombre, ne reçoivent que le ciel. La mer a une traînée de reflet de la lueur du couchant (en émissif).
+- Plans fixes ajoutés : 7 « anti-solaire » (ombre de la Terre) et 8 « altitude » (soleil visible).
