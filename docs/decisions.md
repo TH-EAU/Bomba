@@ -298,3 +298,15 @@
 - Le vent agissait déjà sur toute la physique (vitesse relative à l'air : traînée, adhérence latérale, surfaces). Vérifié avec la sonde (CloudSurfer, plein gaz 3 s) : 10 m/s de face donnent 48 m/s au lieu de 57 ; de travers, la vitesse et l'altitude bougent peu.
 - HUD (`DebugHud`) : ligne « Vent : force m/s (km/h) », direction relative (de face, dans le dos, de travers, pousse à gauche ou à droite), ascendance ou descendance au-delà de 1 m/s, et flèche relative au nez (`Scripts/UI/WindIndicator.cs`). Le vent d'orage est compris.
 - Constat sonde : le CloudSurfer descend désormais à plein gaz (−16 m à 3 s), à cause des réglages de l'utilisateur dans `CloudSurfer.tscn` (`VerticalGripPowered` 0,2, `BrakeDrag` 0,2, portance de `HullLift` revenue aux valeurs par défaut). Indépendant du vent.
+
+## 2026-11-09 : ombre des nuages sur l'engin, œil du cumulonimbus, nuages vivants
+- Ombre : `CloudField.SunTransmittance` (24 pas vers le soleil rasant, jusqu'à 6 km, extinction 0,004/m, exports `ShadowMaxDistance` et `ShadowExtinction`). `TwilightSun` multiplie son énergie par cette valeur, lissée sur 0,3 s. Elle agit sur l'engin et sur la pluie (couche 2). Mesures : 1,0 en plein air, 0 dans la nappe, 0,49 sous le géant. La mer et les îlots restent dans l'ombre de la Terre.
+- Œil : `EyeRadiusRatio` 0,1 (≈ 1 km) et `EyeSoftness` 0,25. Le masque `EyeMask` vide la colonne centrale du cumulonimbus (densité et canal orage) sur toute sa hauteur. `StormWeather` y annule pluie, grêle, vent et turbulence, le rideau de pluie aussi (`vec4 storm_eye`, `Params` à 464 octets), et les éclairs sont tirés hors de l'œil. En bas de l'œil, la nappe soulevée au pied de l'orage reste présente.
+- Nuages vivants : le bruit de forme dérive et monte (convection, `NoiseRise` 1,5), le détail fin dérive autrement : le relief évolue au lieu de glisser. Vitesse `NoiseDriftSpeed` 0,012 (au lieu de 0,004). Coût nul : 60 FPS sur tous les plans de CloudShots.
+- CloudShots : plan « œil » (vue plongeante sur le géant).
+- Note : depuis le vent en rafales, la sonde de vol n'est plus parfaitement reproductible (la phase des rafales dépend de la durée du calcul des nuages). À geler pour les comparaisons fines.
+- Œil percé de part en part (demande de l'utilisateur : « un trou de nuage ») :
+  - rayon 0,15 R (≈ 1,6 km) ;
+  - l'œil perce aussi la nappe soulevée au pied de l'orage (grille géante) ;
+  - et la nappe locale, qui se répète : masquée à l'échantillonnage, à la position réelle de l'œil (shader `sample_cloud` et `CloudField.Sample`). Le SDF n'est pas modifié : retirer du nuage ne fait qu'allonger la distance, le saut reste sûr.
+  - Vérification : densité nulle au centre et à 1 km, de 350 m à 10 km ; vue plongeante (plan « œil » à la verticale) : puits jusqu'à la mer.

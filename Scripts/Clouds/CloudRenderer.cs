@@ -19,7 +19,7 @@ public partial class CloudRenderer : CompositorEffect
 	private const string Context = "bomba_clouds";
 	private const int ShapeNoiseSize = 64;
 	private const int DetailNoiseSize = 32;
-	private const int ParamsBytes = 448;
+	private const int ParamsBytes = 464;
 
 	// --- Paramètres (écrits par CloudField) ---
 	public byte[] CloudData;
@@ -59,6 +59,8 @@ public partial class CloudRenderer : CompositorEffect
 	public Vector4 Shadow = new(1e6f, 0f, 0f, -1f);
 	/// <summary>Rideau de pluie sous l'orage : xy centre (X, Z monde), z rayon (m), w intensité (0 : aucun).</summary>
 	public Vector4 Rain;
+	/// <summary>x rayon de l'œil du cumulonimbus (m), y montée relative du bruit (convection).</summary>
+	public Vector4 StormEye;
 	/// <summary>LOD du bruit : distances (m) au-delà desquelles le détail fin / les bourgeons ne sont plus calculés.</summary>
 	public float LodFineDistance = 6000f, LodShapeDistance = 20000f;
 
@@ -319,6 +321,7 @@ public partial class CloudRenderer : CompositorEffect
 		Add(f, GiantOrigin.X, GiantOrigin.Y, LodFineDistance, LodShapeDistance);
 		Add(f, Shadow.X, Shadow.Y, Shadow.Z, Shadow.W);
 		Add(f, Rain.X, Rain.Y, Rain.Z, Rain.W);
+		Add(f, StormEye.X, StormEye.Y, StormEye.Z, StormEye.W);
 
 		var bytes = new byte[ParamsBytes];
 		Buffer.BlockCopy(f.ToArray(), 0, bytes, 0, Math.Min(bytes.Length, f.Count * 4));

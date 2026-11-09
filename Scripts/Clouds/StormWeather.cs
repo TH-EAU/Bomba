@@ -98,6 +98,9 @@ public partial class StormWeather : Node, IWindSource
 
     private float HorizontalDistance(Vector3 p) => new Vector2(p.X - Center.X, p.Z - Center.Y).Length();
 
+    /// <summary>Œil (CloudField.EyeMask) : 0 au centre, 1 au-delà. L'œil est calme : ni pluie, ni grêle, ni vent.</summary>
+    private float Eye(Vector3 p) => CloudField.Instance?.EyeMask(HorizontalDistance(p), Radius) ?? 1f;
+
     /// <summary>Intensité de pluie (0..1) au point.</summary>
     public float RainAt(Vector3 p)
     {
@@ -108,7 +111,7 @@ public partial class StormWeather : Node, IWindSource
             return 0f;
         float below = 1f - Mathf.SmoothStep(Top * 0.9f, Top, p.Y);
         float storm = CloudField.Instance?.Sample(p).Storm ?? 0f;
-        return Mathf.Clamp(footprint * below * (0.7f + 0.3f * storm), 0f, 1f);
+        return Mathf.Clamp(footprint * below * (0.7f + 0.3f * storm) * Eye(p), 0f, 1f);
     }
 
     /// <summary>Intensité de grêle (0..1) au point : cœur orageux, en altitude.</summary>
@@ -118,12 +121,12 @@ public partial class StormWeather : Node, IWindSource
             return 0f;
         float storm = CloudField.Instance?.Sample(p).Storm ?? 0f;
         return Mathf.SmoothStep(HailStormThreshold, HailStormThreshold + 0.3f, storm)
-             * Mathf.SmoothStep(HailAltitude - 500f, HailAltitude + 500f, p.Y);
+             * Mathf.SmoothStep(HailAltitude - 500f, HailAltitude + 500f, p.Y) * Eye(p);
     }
 
     /// <summary>Part du vent d'orage (0..1) au point : 0 loin, 1 au maximum.</summary>
     public float StormWind01(Vector3 p) =>
-        Active ? Mathf.SmoothStep(WindReachRadii * Radius, WindPeakRadii * Radius, HorizontalDistance(p)) : 0f;
+        Active ? Mathf.SmoothStep(WindReachRadii * Radius, WindPeakRadii * Radius, HorizontalDistance(p)) * Eye(p) : 0f;
 
     /// <summary>Agitation des rafales (0..1) au point : pluie agitée, grincements.</summary>
     public float Turbulence01(Vector3 p)

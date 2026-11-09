@@ -90,6 +90,9 @@ public partial class CloudShots : Node
         // Sous l'orage : dans la pluie (particules, vent d'orage), regard vers l'extérieur à travers le rideau.
         Vector3 underPos = Toward(Vector3.Zero, stormBase, storm.Radius * 0.35f) with { Y = 150f };
         _shots.Add(("sous l'orage", underPos, underPos + (underPos - stormBase) with { Y = 0f } + Vector3.Up * 60f, false));
+        // Œil : vue plongeante sur le cumulonimbus, la colonne calme au centre.
+        Vector3 eyeTop = storm.Position with { Y = storm.Top + 2500f };
+        _shots.Add(("œil", eyeTop + new Vector3(storm.Radius * 0.08f, 0f, storm.Radius * 0.08f), storm.Position with { Y = 0f }, false));
         // Bord : caméra au ras du flanc d'un cumulus, regard tangent à travers son bord vers l'horizon
         // (les nuages lointains doivent rester visibles à travers le bord fin).
         Vector3 side = new Vector3(1f, 0f, 0.35f).Normalized();

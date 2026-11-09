@@ -41,6 +41,7 @@ layout(set = 0, binding = 5, std140) uniform Params {
     vec4 giant_origin;            // xy coin du domaine geant (sans repetition), z LOD detail fin (m), w LOD bourgeons (m)
     vec4 earth_shadow;            // x altitude de l ombre a l origine, y tan(abaissement), zw azimut du soleil
     vec4 rain;                    // rideau de pluie : xy centre (x, z monde), z rayon (m), w intensite (0 : aucun)
+    vec4 storm_eye;               // x rayon de l oeil du cumulonimbus (m), y montee relative du bruit (convection)
 } p;
 
 const float PI = 3.14159265;
@@ -81,6 +82,12 @@ float g_giant = 0.0;
 
 vec4 sample_cloud(vec3 pos) {
     vec4 a = sample_grid(cloud_tex, vec4(p.volume.xyz, p.temporal.z), pos);
+    // L oeil du cumulonimbus perce aussi la nappe locale (qui se repete) : masquee a la position reelle de l oeil.
+    // Le SDF n est pas modifie : retirer du nuage ne fait qu allonger la vraie distance (saut toujours sur).
+    if (p.storm_eye.x > 0.0) {
+        float de = length(pos.xz - p.rain.xy);
+        a.g *= smoothstep(p.storm_eye.x * 0.75, p.storm_eye.x * 1.25, de);
+    }
     vec4 b = sample_giant(pos);
     g_giant = b.g / max(a.g + b.g, 1e-4);
     return vec4(min(a.r, b.r), max(a.gba, b.gba));
@@ -140,6 +147,9 @@ void march_rain(vec3 cam, vec3 dir, float t_max, float jitter, inout vec3 L, ino
         vec3 pos = cam + dir * t;
         float r = length(pos.xz - p.rain.xy) / p.rain.z;
         float edge = 1.0 - smoothstep(0.6, 1.0, r);
+        float eye_r = p.storm_eye.x;
+        if (eye_r > 0.0)
+            edge *= smoothstep(eye_r * 0.75, eye_r * 1.25, r * p.rain.z);   // pas de pluie dans l oeil
         float floor_fade = smoothstep(RAIN_FLOOR, RAIN_FLOOR + 40.0, pos.y);
         float streak = textureLod(detail_tex, vec3(pos.x / 60.0, (pos.y + fall) / 900.0, pos.z / 60.0), 0.0).r;
         float dens = p.rain.w * edge * floor_fade * mix(0.35, 1.0, streak);
@@ -162,8 +172,16 @@ vec3 view_from_depth(vec2 uv, float d) {
     return v.xyz / v.w;
 }
 
+// Derive du bruit : horizontale et montante (convection), le motif monte dans les nuages et bouillonne.
 vec3 noise_drift() {
-    return vec3(p.cam_pos_time.w * p.offset_frame.w, 0.0, p.cam_pos_time.w * p.offset_frame.w * 0.4);
+    float d = p.cam_pos_time.w * p.offset_frame.w;
+    return vec3(d, -d * p.storm_eye.y, d * 0.4);
+}
+
+// Detail fin : derive differente (horizontale opposee, montee plus rapide) : le relief evolue au lieu de glisser.
+vec3 detail_drift() {
+    float d = p.cam_pos_time.w * p.offset_frame.w;
+    return vec3(-d * 0.7, -d * p.storm_eye.y * 1.6, d * 0.9);
 }
 
 // Saturation douce : les faibles densites montent vite (bords nets), le coeur reste borne a 1.
@@ -204,7 +222,7 @@ float shape_density(vec3 pos, float cov) {
 float detail_density(vec3 pos, float shape) {
     if (shape <= 0.0)
         return 0.0;
-    vec3 dn = textureLod(detail_tex, pos / (detail_period() * 0.22) + noise_drift() * 3.0, 0.0).rgb;
+    vec3 dn = textureLod(detail_tex, pos / (detail_period() * 0.22) + detail_drift() * 3.0, 0.0).rgb;
     float dfbm = smoothstep(0.45, 0.97, dn.r * 0.625 + dn.g * 0.25 + dn.b * 0.125);
     float bottom = 1.0 - smoothstep(p.volume.y + 60.0, p.volume.y + 170.0, pos.y);
     float modifier = mix(dfbm, 1.0 - dfbm, bottom);

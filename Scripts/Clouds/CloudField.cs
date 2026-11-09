@@ -114,6 +114,22 @@ public partial class CloudField : Node, IWindSource
 	[Export] public float RainCurtain { get; set; } = 1f;
 	/// <summary>Rayon du rideau de pluie (× rayon du cumulonimbus).</summary>
 	[Export] public float RainCurtainRadius { get; set; } = 0.6f;
+	/// <summary>Rayon de l'œil (× rayon du cumulonimbus) : colonne vide et calme au centre, du pied au sommet.</summary>
+	[Export] public float EyeRadiusRatio { get; set; } = 0.15f;
+	/// <summary>Douceur du bord de l'œil (part du rayon de l'œil).</summary>
+	[Export(PropertyHint.Range, "0.05,0.8,0.01")] public float EyeSoftness { get; set; } = 0.25f;
+
+	[ExportGroup("Ombre des nuages")]
+	/// <summary>Distance (m) explorée vers le soleil pour l'ombre portée sur l'engin (soleil rasant).</summary>
+	[Export] public float ShadowMaxDistance { get; set; } = 6000f;
+	/// <summary>Extinction (1/m à densité 1) du soleil à travers les nuages, pour l'engin.</summary>
+	[Export] public float ShadowExtinction { get; set; } = 0.004f;
+
+	[ExportGroup("Mouvement du bruit")]
+	/// <summary>Vitesse de dérive du bruit (périodes de forme par seconde) : les nuages bouillonnent.</summary>
+	[Export] public float NoiseDriftSpeed { get; set; } = 0.012f;
+	/// <summary>Montée relative du bruit (convection) : le motif monte dans les nuages.</summary>
+	[Export] public float NoiseRise { get; set; } = 1.5f;
 	[Export] public float CumulonimbusRadiusMin { get; set; } = 8000f;
 	[Export] public float CumulonimbusRadiusMax { get; set; } = 11000f;
 	[Export] public float CumulonimbusTopMin { get; set; } = 10000f;
@@ -350,6 +366,46 @@ public partial class CloudField : Node, IWindSource
 		float flash = LightningFlash;
 		r.Lightning = new Vector4(LightningPosition.X, LightningPosition.Y, LightningPosition.Z, flash);
 		r.Rain = RainCurtainParams();
+		r.StormEye = new Vector4(GiantEnabled && _giantTowers.Count > 0 ? _giantTowers[0].Radius * EyeRadiusRatio : 0f, NoiseRise, 0f, 0f);
+		r.DetailSpeed = NoiseDriftSpeed;
+	}
+
+	/// <summary>Masque de l'œil du cumulonimbus à une position du monde (1 sans géant).</summary>
+	public float GiantEyeMaskAt(Vector3 p)
+	{
+		if (!GiantEnabled || _giantTowers.Count == 0 || !_giantTowers[0].Storm)
+			return 1f;
+		Tower t = _giantTowers[0];
+		float dx = p.X - (Giant.Origin.X + t.X + Offset.X), dz = p.Z - (Giant.Origin.Y + t.Z + Offset.Y);
+		return EyeMask(Mathf.Sqrt(dx * dx + dz * dz), t.Radius);
+	}
+
+	/// <summary>Masque de l'œil (0 au centre, 1 hors de l'œil), selon la distance horizontale au centre de l'orage.</summary>
+	public float EyeMask(float distance, float stormRadius)
+	{
+		float r = EyeRadiusRatio * stormRadius;
+		return r <= 0f ? 1f : SmoothStep(r * (1f - EyeSoftness), r * (1f + EyeSoftness), distance);
+	}
+
+	/// <summary>
+	/// Part du soleil (0..1) qui atteint le point à travers les nuages : marche vers le soleil (rasant), pas
+	/// croissants (le nuage proche compte le plus). Sert à l'ombre portée des nuages sur l'engin (TwilightSun).
+	/// </summary>
+	public float SunTransmittance(Vector3 pos)
+	{
+		if (!IsBaked)
+			return 1f;
+		Vector3 dir = Twilight.SunDirection;
+		const int steps = 24;
+		float depth = 0f, prev = 0f;
+		for (int i = 1; i <= steps; i++)
+		{
+			float u = (float)i / steps;
+			float dist = u * u * ShadowMaxDistance;
+			depth += Sample(pos + dir * dist).Density * (dist - prev);
+			prev = dist;
+		}
+		return Mathf.Exp(-depth * ShadowExtinction);
 	}
 
 	/// <summary>Paramètres du rideau de pluie pour le rendu : centre (X, Z), rayon, intensité.</summary>
@@ -368,7 +424,12 @@ public partial class CloudField : Node, IWindSource
 	{
 		if (!IsBaked)
 			return new CloudSample { Sdf = 1e6f };
-		return CloudSample.Union(Local.Sample(worldPos, Offset), Giant.Sample(worldPos, Offset));
+		CloudSample local = Local.Sample(worldPos, Offset);
+		// L'œil traverse aussi la nappe locale (qui se répète) : masquée ici, à la position réelle de l'œil.
+		float eye = GiantEyeMaskAt(worldPos);
+		local.Density *= eye;
+		local.Storm *= eye;
+		return CloudSample.Union(local, Giant.Sample(worldPos, Offset));
 	}
 
 	/// <summary>Densité 0..1 au point (0 hors nuage).</summary>
@@ -466,7 +527,7 @@ public partial class CloudField : Node, IWindSource
 			float gx = Giant.Origin.X + t.X + Offset.X, gz = Giant.Origin.Y + t.Z + Offset.Y;
 			if ((gx - around.X) * (gx - around.X) + (gz - around.Z) * (gz - around.Z) > radius * radius)
 				continue;
-			Vector2 j = Vector2.Right.Rotated(rng.Randf() * Mathf.Tau) * rng.RandfRange(0f, 0.3f * t.Radius);
+			Vector2 j = Vector2.Right.Rotated(rng.Randf() * Mathf.Tau) * rng.RandfRange(EyeRadiusRatio * 1.3f * t.Radius, 0.3f * t.Radius);
 			candidates.Add(new Vector3(gx + j.X, Mathf.Lerp(LayerBottom, t.Top, rng.RandfRange(0.15f, 0.7f)), gz + j.Y));
 		}
 		foreach (Tower t in _localTowers)
@@ -714,7 +775,7 @@ public partial class CloudField : Node, IWindSource
 		{
 			float x = (i + 0.5f) * g.CellXZ;
 			near.Clear();
-			float skirt = 0f;
+			float skirt = 0f, eyeHole = 1f;
 			for (int ti = 0; ti < _giantTowers.Count; ti++)
 			{
 				Tower t = _giantTowers[ti];
@@ -724,8 +785,11 @@ public partial class CloudField : Node, IWindSource
 					continue;
 				near.Add(ti);
 				if (t.Storm)
+				{
 					// Jupe limitée à ~1,25 R : au-delà, la mer de nuages reste normale (zone de départ comprise).
 					skirt = Mathf.Max(skirt, 1f - SmoothStep(t.Radius * 0.85f, t.Radius * 1.25f, d));
+					eyeHole = Mathf.Min(eyeHole, EyeMask(d, t.Radius));   // l'œil perce aussi la jupe
+				}
 			}
 			if (near.Count == 0)
 				continue;
@@ -737,7 +801,7 @@ public partial class CloudField : Node, IWindSource
 			for (int j = 0; j < g.SizeY; j++)
 			{
 				float y = g.CellCenterY(j);
-				float layer = skirt * SmoothStep(LayerBottom, LayerBottom + 60f, y) * (1f - SmoothStep(layerTop - 120f, layerTop, y));
+				float layer = skirt * SmoothStep(LayerBottom, LayerBottom + 60f, y) * (1f - SmoothStep(layerTop - 120f, layerTop, y)) * eyeHole;
 				WriteVoxel(g, i, j, k, x, y, z, layer, _giantTowers, near, 6f);
 			}
 		}
@@ -815,10 +879,12 @@ public partial class CloudField : Node, IWindSource
 			float topLocal = 1f - 0.03f * rr * rr + 0.05f * (1f - SmoothStep(0f, 0.3f, rr));
 			float cap = 1f - SmoothStep(topLocal - 0.04f, topLocal, h);
 
+			// Œil : colonne vide et calme au centre, sur toute la hauteur.
+			float eye = EyeMask(dw, t.Radius);
 			float core = (1f - SmoothStep(0.25f * t.Radius, 0.8f * t.Radius, dw))
 						 * SmoothStep(0.02f, 0.12f, h) * (1f - SmoothStep(0.8f, 0.95f, h));
-			storm = Mathf.Max(storm, core);
-			return (1f - SmoothStep(0.5f * radius, 1.05f * radius, dw)) * cap * SmoothStep(-0.05f, 0.03f, h);
+			storm = Mathf.Max(storm, core * eye);
+			return (1f - SmoothStep(0.5f * radius, 1.05f * radius, dw)) * cap * SmoothStep(-0.05f, 0.03f, h) * eye;
 		}
 		else
 		{

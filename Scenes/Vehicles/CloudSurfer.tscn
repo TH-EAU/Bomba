@@ -17,6 +17,7 @@ script = ExtResource("1_vehicle")
 DisplayName = "Le CloudSurfer"
 LaunchSpeed = 60.0
 CenterOfMassOffset = Vector3(0, -1.8, -1)
+PowerWeight = 2.0
 RollAssist = 20.0
 PitchHold = 1.0
 ForwardDrag = 0.012
@@ -26,6 +27,10 @@ MaxSpeed = 10000.0
 NitroMaxSpeed = 1000.0
 MaxSpeedStiffness = 44.0
 HoverAssist = 0.35
+NitroDrainPerSecond = 0.0
+NitroImpulse = 14.81
+NitroAcceleration = 100.0
+NitroThrustMultiplier = 5.0
 
 [node name="Collision" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.55, -1.2)

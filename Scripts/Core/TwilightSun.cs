@@ -25,6 +25,7 @@ public partial class TwilightSun : DirectionalLight3D, IVehicleTracker
     private const float DiscStep = 0.002f;
     private const float DiscMin = -0.02f, DiscMax = 0.05f;
     private float _sentDiscElevation = float.NaN;
+    private float _cloudLight = 1f;
 
     public override void _Ready()
     {
@@ -44,6 +45,11 @@ public partial class TwilightSun : DirectionalLight3D, IVehicleTracker
         if (Engine.IsEditorHint())
             return;
         float lit = IsInstanceValid(Target) ? Twilight.SunLit(Target.GlobalPosition) : 0f;
+        // Ombre portée des nuages : le soleil rasant traverse les nuages avant d'atteindre l'engin.
+        float cloud = IsInstanceValid(Target) && Bomba.Clouds.CloudField.Instance != null
+            ? Bomba.Clouds.CloudField.Instance.SunTransmittance(Target.GlobalPosition) : 1f;
+        _cloudLight = Mathf.Lerp(_cloudLight, cloud, 1f - Mathf.Exp(-(float)delta / 0.3f));
+        lit *= _cloudLight;
         LightEnergy = Energy * lit;
         Visible = lit > 0.001f;
         UpdateSkyDisc();
