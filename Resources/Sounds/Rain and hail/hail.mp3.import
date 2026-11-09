@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://c14grvkdsl7jm"
+path="res://.godot/imported/hail.mp3-09058ad08bf84f8d69c5d4dc99ecf426.mp3str"
+
+[deps]
+
+source_file="res://Resources/Sounds/Rain and hail/hail.mp3"
+dest_files=["res://.godot/imported/hail.mp3-09058ad08bf84f8d69c5d4dc99ecf426.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

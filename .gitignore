@@ -1,3 +1,8 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# Fichiers sources Blender : ne pas versionner (le jeu utilise l'export .glb)
+*.blend
+*.blend1
+*.blend.import

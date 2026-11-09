@@ -40,6 +40,7 @@ layout(set = 0, binding = 5, std140) uniform Params {
     vec4 giant_volume;            // x periode, y alt min, z alt max, w exposant vertical (grille geante)
     vec4 giant_origin;            // xy coin du domaine geant (sans repetition), z LOD detail fin (m), w LOD bourgeons (m)
     vec4 earth_shadow;            // x altitude de l ombre a l origine, y tan(abaissement), zw azimut du soleil
+    vec4 rain;                    // rideau de pluie : xy centre (x, z monde), z rayon (m), w intensite (0 : aucun)
 } p;
 
 const float PI = 3.14159265;
@@ -96,6 +97,62 @@ float hg(float c, float g) {
 
 float ign(vec2 px) {
     return fract(52.9829189 * fract(dot(px, vec2(0.06711056, 0.00583715))));
+}
+
+// Rideau de pluie sous le cumulonimbus : cylindre vertical (de la mer a la base des nuages), centre p.rain.xy,
+// rayon p.rain.z. Peu dense : de loin, un voile gris au travers duquel on distingue les elements. Stries verticales
+// qui defilent vers le bas. Marche dediee (intersection analytique) : la tranche des nuages n'est pas elargie.
+const float RAIN_FLOOR = -60.0;
+const float RAIN_EXTINCTION = 3.0e-4;   // 1/m a intensite 1 : presque opaque a travers le coeur, transparent sur les bords
+const int RAIN_STEPS = 20;
+
+void march_rain(vec3 cam, vec3 dir, float t_max, float jitter, inout vec3 L, inout float T) {
+    if (p.rain.w <= 0.0 || T < 0.01)
+        return;
+    float top = p.giant_volume.y;
+    vec2 oc = cam.xz - p.rain.xy;
+    float a = dot(dir.xz, dir.xz), b = dot(oc, dir.xz), c = dot(oc, oc) - p.rain.z * p.rain.z;
+    float ta = 0.0, tb = t_max;
+    if (a < 1e-8) {
+        if (c > 0.0) return;
+    } else {
+        float disc = b * b - a * c;
+        if (disc <= 0.0) return;
+        float s = sqrt(disc);
+        ta = max(ta, (-b - s) / a);
+        tb = min(tb, (-b + s) / a);
+    }
+    if (abs(dir.y) < 1e-5) {
+        if (cam.y < RAIN_FLOOR || cam.y > top) return;
+    } else {
+        float ya = (RAIN_FLOOR - cam.y) / dir.y, yb = (top - cam.y) / dir.y;
+        ta = max(ta, min(ya, yb));
+        tb = min(tb, max(ya, yb));
+    }
+    if (tb <= ta)
+        return;
+
+    float st = (tb - ta) / float(RAIN_STEPS);
+    vec3 amb = mix(p.ambient_bottom_detail.rgb, p.ambient_top_threshold.rgb, 0.35) * 0.85;
+    float fall = p.cam_pos_time.w * 9.0;
+    for (int i = 0; i < RAIN_STEPS; i++) {
+        float t = ta + (float(i) + jitter) * st;
+        vec3 pos = cam + dir * t;
+        float r = length(pos.xz - p.rain.xy) / p.rain.z;
+        float edge = 1.0 - smoothstep(0.6, 1.0, r);
+        float floor_fade = smoothstep(RAIN_FLOOR, RAIN_FLOOR + 40.0, pos.y);
+        float streak = textureLod(detail_tex, vec3(pos.x / 60.0, (pos.y + fall) / 900.0, pos.z / 60.0), 0.0).r;
+        float dens = p.rain.w * edge * floor_fade * mix(0.35, 1.0, streak);
+        if (dens <= 0.001)
+            continue;
+        vec3 lum = amb;
+        if (p.lightning.w > 0.0)
+            lum += vec3(0.75, 0.8, 1.0) * p.lightning.w * 6.0 * exp(-distance(pos, p.lightning.xyz) / 3000.0);
+        lum = mix(lum, p.fog.rgb, 1.0 - exp(-t * p.fog.w));
+        float Ts = exp(-dens * RAIN_EXTINCTION * st);
+        L += T * lum * (1.0 - Ts);
+        T *= Ts;
+    }
 }
 
 // Reconstruit la position en vue : la projection de Godot est deja corrigee Vulkan (Y retourne, Z [0,1] inverse).
@@ -225,6 +282,14 @@ void main() {
         return;
     }
 
+    // Rideau de pluie : devant les nuages si la camera est sous leur base, derriere sinon.
+    vec3 L = vec3(0.0);
+    float T = 1.0;
+    float rain_jitter = ign(vec2(px) + p.offset_frame.z * 3.17);
+    bool rain_first = cam.y < p.giant_volume.y;
+    if (rain_first)
+        march_rain(cam, dir, scene_dist, rain_jitter, L, T);
+
     // Intersection avec la tranche d'altitude des nuages.
     float t0 = 0.0, t1 = scene_dist;
     float y0 = slab_lo(), y1 = slab_hi();
@@ -238,7 +303,7 @@ void main() {
     }
     if (miss || t0 >= t1) {
         imageStore(out_depth, px, vec4(scene_dist, scene_dist, 0.0, 0.0));
-        imageStore(out_cloud, px, vec4(0, 0, 0, 1));
+        imageStore(out_cloud, px, vec4(L, T));
         return;
     }
 
@@ -246,8 +311,6 @@ void main() {
     float jitter = ign(vec2(px) + p.offset_frame.z * 5.588238);
     float t = t0 + jitter * step_in;
     bool entered = true;
-    float T = 1.0;
-    vec3 L = vec3(0.0);
     float first_hit = -1.0;
     float depth_w = 0.0, depth_sum = 0.0;
 
@@ -371,6 +434,9 @@ void main() {
         t += adv;
         last_adv = adv;
     }
+
+    if (!rain_first)
+        march_rain(cam, dir, scene_dist, rain_jitter, L, T);
 
 
     float cloud_depth = depth_w > 1e-3 ? depth_sum / depth_w : scene_dist;

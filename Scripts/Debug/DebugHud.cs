@@ -28,6 +28,8 @@ public partial class DebugHud : CanvasLayer, IVehicleTracker
     private Label _altitudeLabel;
     private Label _stateLabel;
     private Label _cloudLabel;
+    private Label _windLabel;
+    private Bomba.UI.WindIndicator _windIndicator;
     private CloudEffects _cloudEffects;
     private ProgressBar _powerBar;
     private ProgressBar _authorityBar;
@@ -78,6 +80,13 @@ public partial class DebugHud : CanvasLayer, IVehicleTracker
         _statsBox.AddChild(_stateLabel);
         _cloudLabel = CreateLabel(14);
         _statsBox.AddChild(_cloudLabel);
+        var windRow = new HBoxContainer();
+        _statsBox.AddChild(windRow);
+        _windIndicator = new Bomba.UI.WindIndicator();
+        windRow.AddChild(_windIndicator);
+        _windLabel = CreateLabel(14);
+        _windLabel.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+        windRow.AddChild(_windLabel);
         _powerBar = CreateBar(_statsBox, "Puissance");
         _authorityBar = CreateBar(_statsBox, "Autorité");
         _nitroBar = CreateBar(_statsBox, "Nitro");
@@ -129,6 +138,7 @@ public partial class DebugHud : CanvasLayer, IVehicleTracker
         _stateLabel.AddThemeColorOverride("font_color", stateColor);
 
         UpdateCloudLine();
+        UpdateWind(v);
 
         _powerBar.Value = v.PowerRatio;
         _authorityBar.Value = v.Authority;
@@ -136,6 +146,27 @@ public partial class DebugHud : CanvasLayer, IVehicleTracker
 
         if (DebugSettings.ShowDebug)
             _detailLabel.Text = BuildModuleDetail(v);
+    }
+
+    /// <summary>Vent au point de l'engin (global + orage + rafales) : force, direction relative et ascendance.</summary>
+    private void UpdateWind(Vehicle v)
+    {
+        Vector3 w = Wind.GetWindAt(v.GlobalPosition);
+        Basis b = v.GlobalBasis.Orthonormalized();
+        Vector3 fwd = new Vector3(-b.Z.X, 0f, -b.Z.Z);
+        Vector3 right = new Vector3(b.X.X, 0f, b.X.Z);
+        fwd = fwd.LengthSquared() > 1e-6f ? fwd.Normalized() : Vector3.Forward;
+        right = right.LengthSquared() > 1e-6f ? right.Normalized() : Vector3.Right;
+        var rel = new Vector2(w.Dot(right), w.Dot(fwd));
+        _windIndicator.RelativeWind = rel;
+
+        float h = rel.Length();
+        string where = h < 0.5f ? "calme"
+            : rel.Y < -0.7f * h ? "de face"
+            : rel.Y > 0.7f * h ? "dans le dos"
+            : rel.X > 0f ? "de travers, pousse à droite" : "de travers, pousse à gauche";
+        string vertical = Mathf.Abs(w.Y) > 1f ? (w.Y > 0f ? $" · ascendance {w.Y:F0} m/s" : $" · descendance {-w.Y:F0} m/s") : "";
+        _windLabel.Text = $"Vent : {h:F0} m/s ({h * 3.6f:F0} km/h)\n{where}{vertical}";
     }
 
     public override void _UnhandledInput(InputEvent e)

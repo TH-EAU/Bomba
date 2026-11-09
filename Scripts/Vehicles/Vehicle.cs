@@ -78,6 +78,14 @@ public partial class Vehicle : RigidBody3D
 	/// <summary>Freinage linéaire de l'aérofrein (1/s).</summary>
 	[Export] public float BrakeDrag { get; set; } = 1.2f;
 
+	[ExportGroup("Vitesse maximale")]
+	/// <summary>Vitesse maximale (m/s) hors nitro. 0 : pas de limite (l'équilibre poussée / traînée décide).</summary>
+	[Export] public float MaxSpeed { get; set; } = 0f;
+	/// <summary>Vitesse maximale (m/s) sous nitro. 0 : pas de limite.</summary>
+	[Export] public float NitroMaxSpeed { get; set; } = 0f;
+	/// <summary>Fermeté du limiteur (1/s) : au-delà de la limite, freinage proportionnel à l'excès.</summary>
+	[Export] public float MaxSpeedStiffness { get; set; } = 10f;
+
 	[ExportGroup("Sustentation arcade")]
 	/// <summary>Part de la gravité compensée à pleine puissance (0 = aucune aide, physique pure).</summary>
 	[Export(PropertyHint.Range, "0,1.5,0.01")] public float HoverAssist { get; set; } = 0f;
@@ -197,6 +205,7 @@ public partial class Vehicle : RigidBody3D
 			: Mathf.Clamp(PowerRatio * PowerWeight + airContribution * AirWeight, MinAuthority, 1f);
 
 		ApplyDrag(input);
+		ApplySpeedLimit();
 		ApplySteering(input);
 
 		if (NitroActive)
@@ -271,6 +280,18 @@ public partial class Vehicle : RigidBody3D
 	/// Traînée anisotrope : adhérence latérale/verticale forte quand l'autorité est haute,
 	/// faible en balistique. Une partie de la vitesse "accrochée" est redirigée vers l'avant.
 	/// </summary>
+	/// <summary>Limiteur doux : au-delà de la vitesse maximale, une force freine proportionnellement à l'excès.</summary>
+	private void ApplySpeedLimit()
+	{
+		float limit = NitroActive ? NitroMaxSpeed : MaxSpeed;
+		if (limit <= 0f)
+			return;
+		float speed = LinearVelocity.Length();
+		if (speed <= limit)
+			return;
+		ApplyCentralForce(-LinearVelocity / speed * (speed - limit) * MaxSpeedStiffness * Mass);
+	}
+
 	private void ApplyDrag(VehicleInput input)
 	{
 		Basis basis = GlobalBasis.Orthonormalized();

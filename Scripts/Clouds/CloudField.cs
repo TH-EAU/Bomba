@@ -110,6 +110,10 @@ public partial class CloudField : Node, IWindSource
 	/// <see cref="CumulonimbusRadiusMax"/> : à moins de ~11 km de l'origine, le joueur apparaît dans l'orage.
 	/// </summary>
 	[Export] public Vector2 GiantPosition { get; set; } = new(-8700f, -11600f);
+	/// <summary>Intensité du rideau de pluie sous le cumulonimbus (0 : aucun).</summary>
+	[Export] public float RainCurtain { get; set; } = 1f;
+	/// <summary>Rayon du rideau de pluie (× rayon du cumulonimbus).</summary>
+	[Export] public float RainCurtainRadius { get; set; } = 0.6f;
 	[Export] public float CumulonimbusRadiusMin { get; set; } = 8000f;
 	[Export] public float CumulonimbusRadiusMax { get; set; } = 11000f;
 	[Export] public float CumulonimbusTopMin { get; set; } = 10000f;
@@ -345,6 +349,16 @@ public partial class CloudField : Node, IWindSource
 		r.Time = Time.GetTicksMsec() / 1000f;
 		float flash = LightningFlash;
 		r.Lightning = new Vector4(LightningPosition.X, LightningPosition.Y, LightningPosition.Z, flash);
+		r.Rain = RainCurtainParams();
+	}
+
+	/// <summary>Paramètres du rideau de pluie pour le rendu : centre (X, Z), rayon, intensité.</summary>
+	private Vector4 RainCurtainParams()
+	{
+		if (!GiantEnabled || _giantTowers.Count == 0 || !_giantTowers[0].Storm)
+			return Vector4.Zero;
+		Tower t = _giantTowers[0];
+		return new Vector4(Giant.Origin.X + t.X + Offset.X, Giant.Origin.Y + t.Z + Offset.Y, t.Radius * RainCurtainRadius, RainCurtain);
 	}
 
 	// ------------------------------------------------------------------ API gameplay

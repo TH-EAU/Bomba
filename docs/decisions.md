@@ -220,3 +220,81 @@
 ## 2026-11-09 : la ressource du ciel est la source des réglages
 - Incident : après la modification des valeurs par défaut du shader, l'éditeur gardait les anciennes en cache. En enregistrant `sky_material.tres`, l'utilisateur les y a figées (soleil à 6°, exposition 16…) : le viewport et le jeu ne montraient plus le même ciel.
 - Règle : les réglages du ciel se font dans `Resources/Sky/sky_material.tres`, où toutes les valeurs sont écrites en clair. Ne plus retoucher les valeurs par défaut de `sky_atmosphere.gdshader` pour régler le ciel. Si on le fait quand même, recharger le projet dans l'éditeur avant d'enregistrer la ressource.
+
+## 2026-11-09 : éclairs visibles et propagés, tonnerre préparé
+- Constat : les traits existants (cylindres de 3 m de rayon) faisaient moins d'un pixel à quelques kilomètres. On ne voyait que l'éclairage des nuages.
+- `Shaders/Effects/lightning_channel.gdshader` : rubans tournés vers la caméra, largeur minimale de 2 px, cœur et halo en additif HDR, dessinés après les nuages (composés avant les transparents).
+- `LightningBolt` (réécrit) :
+  - un traceur avance (temps d'arrivée par point, 30 km/s visuels), puis l'arc en retour : éclat, creux, éclat, extinction ;
+  - deux formes : ramifiée vers une cible (`Setup`, l'existant) et dans le nuage (`SetupSpider`) ;
+  - l'éclair dans le nuage est un arbre quasi horizontal, qui suit la densité 0,12 (la frange) depuis le cœur ;
+  - visibilité par point à travers les nuages (densité CPU, extinction visuelle 0,0015/m car non érodée). Un canal caché garde un halo élargi : lueur diffuse.
+- `LightningSystem` : éclair dans le nuage pour 85 % des éclairs d'ambiance (`SpiderChance`), en plus de l'existant. L'éclairage des nuages est inchangé.
+- Tonnerre (groupe « Tonnerre » de `LightningSystem`, en attente des sons de l'utilisateur) :
+  - retard = distance / 343 m/s ; `AudioStreamPlayer3D` placé à l'éclair ;
+  - coupure du passe-bas de 16 kHz à 350 Hz (interpolation logarithmique, jusqu'à 12 km) ;
+  - hauteur jusqu'à −15 % au loin ;
+  - claquement ajouté sous 2,5 km.
+
+## 2026-11-09 : éclairs en splines, atténués par les nuages, tonnerre branché
+- M14 (Haiku) : splines Catmull-Rom effilées (tronc ×3, branches ×1 ; éclair rampant 1,5 / 0,8 / 0,5), `MaxSegments` porté à 2100 (le lissage triple les segments).
+- Rendu opaque essayé puis abandonné : les nuages sont rendus en demi-résolution, donc un trait de 1 à 2 px disparaît de la profondeur sous-échantillonnée, et les nuages situés derrière lui sont composés par-dessus.
+- Retenu : rubans additifs HDR au profil doux (halo), visibilité par point calculée sur le CPU (nuage entre la caméra et le point, extinction 0,006/m, 32 échantillons), sans lueur minimale : un éclair derrière un nuage épais s'éteint.
+- Éclair rampant : sort du cœur (densité la plus faible), puis longe la paroi ou le dessous de l'enclume à l'air libre (densité < 0,005 avec du nuage à 250 m au-dessus ou devant). Dans le nuage, un canal est masqué en quelques dizaines de mètres de rendu.
+- Tonnerre : `Thunder1.wav` (grondement) et le claquement MP3 sont chargés par défaut dans `LightningSystem._Ready` si l'inspecteur est vide.
+- Tonnerre audible de loin (demande de l'utilisateur) :
+  - volume via `AudioStreamPlayer3D`, modèle logarithmique, `ThunderUnitSize` 5 km (−6 dB à 10 km) ;
+  - passe-bas via 3 bus « Thunder0..2 » créés en code, chacun avec un `AudioEffectLowPassFilter` en 24 dB, coupure réglée à chaque coup : de 16 kHz à 250 Hz, atteint dès 4 km (`MuffledDistance`) ;
+  - le filtre intégré du lecteur 3D est désactivé : il suit l'atténuation du volume, donc il filtrerait moins un son qui porte loin.
+- Glow des éclairs (demande de l'utilisateur : « un vrai glow », pas un halo 2D) :
+  - le halo dessiné dans le ruban est supprimé : le canal est un cœur fin, à bord antialiasé, très lumineux (HDR 20) ;
+  - le rayonnement vient du glow de l'environnement : mélange additif, niveaux 3 à 6 (1 / 0,8 / 1 / 0,3), plafond de luminance 40 ;
+  - seuil du glow relevé de 4 à 8, pour que le disque solaire (jusqu'à ~6) ne rayonne pas ;
+  - réglages dans le groupe « Rendu » de `LightningSystem` (`BoltEnergy`, `BoltWidth`, `BoltMinPixels`, `BoltColor`), appliqués à chaque éclair.
+
+## 2026-11-09 : CloudSurfer, caméra cockpit, pilotage à la souris
+- `Scenes/Vehicles/CloudSurfer.tscn` remplace le Rafiot dans `Main.tscn` (le Rafiot reste dans le projet). Modèle `Assets/Vehicules/CloudSurfer.glb`, retourné de 180° : la proue est vers +Z dans le modèle, et Godot avance vers -Z.
+- Le `.glb` a été exporté sans le modificateur Miroir : la coque et la cabine n'en couvrent que la moitié (x ≥ 0). Correction provisoire : nœud `ModelMirror`, seconde instance du modèle en symétrie X, où seuls la coque et la cabine restent visibles. À supprimer après un réexport avec « Appliquer les modificateurs ».
+- Physique reprise du Rafiot (masse, traînée, assistance), propulseurs à charbon aux moteurs (±1,5 ; −1,9 ; 2,5), centre de masse (0 ; −1,8 ; −1).
+- Sonde de vol, Rafiot → CloudSurfer : mêmes vitesses (palier ~56 m/s, nitro ~88 m/s). Le CloudSurfer cabre de +6° à plein gaz (poussée légèrement sous le centre de masse), donc il tient mieux l'altitude en virage (+2,7 m contre −11 m).
+- `.gitignore` : `*.blend`, `*.blend1`, `*.blend.import`. Le jeu n'utilise que le `.glb`.
+- M15 (Haiku) :
+  - `ChaseCamera` en mode Cockpit par défaut, sur le `Marker3D` « CockpitCamera » du véhicule (F5 bascule vers la poursuite) ; sans marqueur, retour à la poursuite ;
+  - `PlayerVehicleController` : souris capturée ; le réticule (`Scripts/UI/SteeringReticle.cs`) est un gouvernail sur un disque de 220 px (lacet et tangage, ajoutés au clavier) ; Échap libère la souris, le clic gauche la reprend, le clic molette recentre ;
+  - poussée inchangée.
+- Tonnerre remplacé (2026-11-09, fichiers de l'utilisateur) : `Thunder1.wav` enregistré à 0, 2, 6, 10 et 20 km (`Thunder1-2km.wav`, etc.). Chaque fichier contient déjà le retard de propagation, l'atténuation des aigus et la réverbération.
+  - On joue les deux enregistrements qui encadrent la distance, en fondu à puissance constante (racine des poids) ; au-delà de 20 km, −6 dB par doublement de distance.
+  - Le son est positionné à l'éclair, sans atténuation 3D ni filtre.
+  - Supprimés : le retard calculé, les bus passe-bas, la variation de hauteur et le claquement MP3 séparé (fichier gardé, inutilisé).
+  - Réglages : `ThunderStreams` et `ThunderDistances` (groupe « Tonnerre »).
+
+## 2026-11-09 : pluie, grêle, dépression et ambiance sonore
+- `StormWeather` (nœud de `Main`, source de `Wind`) :
+  - pluie sous le cumulonimbus (pleine jusqu'à 0,6 R, nulle au-delà de R, jusqu'au sommet) ;
+  - grêle dans le cœur orageux (Storm > 0,3) au-dessus de 3 000 m ;
+  - dépression : vent convergent et tournant, jusqu'à 35 m/s, avec rafales de Perlin. Il se lève à 1,3 R, nul au départ (14,5 km du centre), et agit sur toute la physique.
+- M16 (Haiku) `Precipitation` : boîte de particules autour de la caméra, repliée modulo (aucune traînée d'émission), traits étirés selon la vitesse relative à la caméra, emportés par le vent et la turbulence. La pluie mouille aussi l'écran (`ScreenDroplets.RainWetRate`).
+- M17 (Haiku) `WeatherAmbience` :
+  - pluie légère/forte et vent léger/moyen/fort en fondus à puissance constante ;
+  - grêle ;
+  - grincements aléatoires selon le stress (vent d'orage, rafales, rotation).
+- Rideau de pluie : `clouds_march.glsl` (`march_rain`, cylindre analytique de la mer à la base, 20 pas, stries verticales, extinction 3e-4/m) et `vec4 rain` dans `Params` (448 octets). Réglages `CloudField.RainCurtain` et `RainCurtainRadius`. À notre échelle (base des nuages à ~320 m), le rideau est bas et ne se voit bien que sous la nappe, près de l'orage.
+- CloudShots : plans « pluie » (sous la nappe, face au rideau) et « sous l'orage » (dans la pluie).
+- Mesures : sonde de vol proche de l'existant au départ (vent d'orage ramené à zéro au départ) ; 54 à 60 FPS (premier plan 54, contre 60 avant, cause non isolée).
+- Non vérifiés : la grêle à l'écran, et tous les sons à l'écoute.
+- Pluie retouchée (M18, Haiku) :
+  - particules émises en permanence, apparition progressive par seuil aléatoire par goutte (uniform `intensity` lissé) ;
+  - couche masquée hors de la pluie, ce qui corrige la pluie restée visible au point de départ ;
+  - rendu éclairé : bleu clair translucide, normale de cylindre calculée dans le shader, reflet des éclairs et du soleil. Particules sur les couches 1 et 2, pour que le soleil les éclaire comme les véhicules ;
+  - opacité 0,75 ;
+  - `shadows_disabled` : les gouttes ne reçoivent pas l'ombre portée du véhicule (l'ombre de la Terre agit par l'extinction du soleil).
+
+## 2026-11-09 : vitesse maximale réglable
+- `Vehicle` : groupe « Vitesse maximale » avec `MaxSpeed`, `NitroMaxSpeed` (0 = pas de limite, comportement d'avant) et `MaxSpeedStiffness` (10/s). Limiteur doux : au-delà de la limite, freinage proportionnel à l'excès.
+- Essai sonde (CloudSurfer, `MaxSpeed` 45) : palier à environ 46 m/s au lieu de 56, nitro inchangé. Aucun véhicule n'a de limite par défaut.
+
+## 2026-11-09 : vent plus présent et indicateur dans le HUD
+- `Wind` : vent de base 10 m/s (au lieu de 5), rafales en bruit de Perlin (±35 %, 0,15 Hz) au lieu d'une sinusoïde, direction qui tourne de ±30° (0,01 Hz). Exports `DirectionWanderDeg` et `DirectionWanderFrequency`.
+- Le vent agissait déjà sur toute la physique (vitesse relative à l'air : traînée, adhérence latérale, surfaces). Vérifié avec la sonde (CloudSurfer, plein gaz 3 s) : 10 m/s de face donnent 48 m/s au lieu de 57 ; de travers, la vitesse et l'altitude bougent peu.
+- HUD (`DebugHud`) : ligne « Vent : force m/s (km/h) », direction relative (de face, dans le dos, de travers, pousse à gauche ou à droite), ascendance ou descendance au-delà de 1 m/s, et flèche relative au nez (`Scripts/UI/WindIndicator.cs`). Le vent d'orage est compris.
+- Constat sonde : le CloudSurfer descend désormais à plein gaz (−16 m à 3 s), à cause des réglages de l'utilisateur dans `CloudSurfer.tscn` (`VerticalGripPowered` 0,2, `BrakeDrag` 0,2, portance de `HullLift` revenue aux valeurs par défaut). Indépendant du vent.

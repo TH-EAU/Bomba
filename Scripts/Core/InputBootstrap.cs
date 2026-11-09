@@ -21,6 +21,8 @@ public static class GameActions
     public const string SwitchVehicle = "switch_vehicle";
     public const string Respawn = "respawn";
     public const string ToggleDebug = "toggle_debug";
+    public const string CameraToggle = "camera_toggle";
+    public const string ReleaseMouse = "release_mouse";
 }
 
 /// <summary>
@@ -50,6 +52,8 @@ public partial class InputBootstrap : Node
         Bind(GameActions.SwitchVehicle, Key(Godot.Key.Tab), Button(JoyButton.Back));
         Bind(GameActions.Respawn, Key(Godot.Key.R), Button(JoyButton.Start));
         Bind(GameActions.ToggleDebug, Key(Godot.Key.F1));
+        Bind(GameActions.CameraToggle, Key(Godot.Key.F5));
+        Bind(GameActions.ReleaseMouse, Key(Godot.Key.Escape));
     }
 
     private static void Bind(string action, params InputEvent[] events)

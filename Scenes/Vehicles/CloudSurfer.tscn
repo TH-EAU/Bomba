@@ -1,0 +1,73 @@
+[gd_scene load_steps=7 format=3 uid="uid://bcpxhw5jr8t12"]
+
+[ext_resource type="Script" uid="uid://bvd7e8uwu3vnq" path="res://Scripts/Vehicles/Vehicle.cs" id="1_vehicle"]
+[ext_resource type="Script" uid="uid://b7bmqt5kk22y" path="res://Scripts/Vehicles/Modules/Thruster.cs" id="2_thruster"]
+[ext_resource type="Resource" path="res://Resources/Thrusters/Charbon.tres" id="3_charbon"]
+[ext_resource type="Script" uid="uid://xjtmlmyx0a0g" path="res://Scripts/Vehicles/Modules/AeroSurface.cs" id="4_aero"]
+[ext_resource type="PackedScene" uid="uid://cabh2g87kn8t2" path="res://Assets/Vehicules/CloudSurfer.glb" id="5_model"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_hull"]
+size = Vector3(4.4, 4.1, 8.4)
+
+[node name="CloudSurfer" type="RigidBody3D"]
+mass = 20.0
+gravity_scale = 1.6
+angular_damp = 1.5
+script = ExtResource("1_vehicle")
+DisplayName = "Le CloudSurfer"
+LaunchSpeed = 60.0
+CenterOfMassOffset = Vector3(0, -1.8, -1)
+RollAssist = 20.0
+PitchHold = 1.0
+ForwardDrag = 0.012
+VerticalGripPowered = 0.2
+BrakeDrag = 0.2
+MaxSpeed = 10000.0
+NitroMaxSpeed = 1000.0
+MaxSpeedStiffness = 44.0
+HoverAssist = 0.35
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.55, -1.2)
+shape = SubResource("BoxShape3D_hull")
+
+[node name="Model" parent="." instance=ExtResource("5_model")]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 0)
+
+[node name="ModelMirror" parent="." instance=ExtResource("5_model")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 0)
+
+[node name="CockpitCamera" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.9961947, 0.08715574, 0, -0.08715574, 0.9961947, 0, 0.6, 0.46975136)
+
+[node name="ThrusterL" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, -1.9, 2.5)
+script = ExtResource("2_thruster")
+Profile = ExtResource("3_charbon")
+
+[node name="ThrusterR" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, -1.9, 2.5)
+script = ExtResource("2_thruster")
+Profile = ExtResource("3_charbon")
+
+[node name="HullLift" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.5, -1)
+script = ExtResource("4_aero")
+MaxLift = 210.0
+Channel = 4
+
+[node name="Rudder" type="Node3D" parent="."]
+transform = Transform3D(-4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0, 1, 0, -1, 2.5)
+script = ExtResource("4_aero")
+LiftCoefficient = 0.0
+DragCoefficient = 0.005
+ControlStrength = 0.03
+Channel = 4
+
+[node name="Elevator" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 2.6)
+script = ExtResource("4_aero")
+LiftCoefficient = 0.0
+DragCoefficient = 0.005
+ControlStrength = 0.03
+Channel = 4

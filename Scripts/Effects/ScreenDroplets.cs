@@ -19,6 +19,8 @@ public partial class ScreenDroplets : CanvasLayer, IVehicleTracker
     [Export] public float WetRate { get; set; } = 0.9f;
     /// <summary>Couverture perdue par seconde hors nuage.</summary>
     [Export] public float DryRate { get; set; } = 0.12f;
+    /// <summary>Couverture gagnée par seconde à intensité de pluie 1 (sous l'orage, <see cref="StormWeather.RainAt"/>).</summary>
+    [Export] public float RainWetRate { get; set; } = 2.0f;
 
     [ExportGroup("Écoulement")]
     /// <summary>Glisse hors nitro : les gouttes restent quasi immobiles, à peine une reptation.</summary>
@@ -88,6 +90,8 @@ public partial class ScreenDroplets : CanvasLayer, IVehicleTracker
             push = ForceStreak;
 
         _coverage += density * WetRate * dt;
+        if (StormWeather.Instance != null && GetViewport()?.GetCamera3D() is Camera3D cam)
+            _coverage += StormWeather.Instance.RainAt(cam.GlobalPosition) * RainWetRate * dt;
         if (density < InCloudDensity)
             _coverage -= DryRate * dt;
         _coverage -= push * ClearRate * dt;

@@ -91,13 +91,22 @@ public partial class ArenaBuilder : Node3D
             GlowEnabled = true,
             GlowIntensity = 0.5f,
             GlowBloom = 0.0f,
-            GlowHdrThreshold = 4.0f,
+            GlowHdrThreshold = 8.0f,
+            // Seules les sources très lumineuses (éclairs, > 8 ; le disque solaire reste dessous) dépassent le seuil : glow additif, large et non plafonné,
+            // pour un vrai rayonnement autour des canaux.
+            GlowBlendMode = Godot.Environment.GlowBlendModeEnum.Additive,
+            GlowHdrLuminanceCap = 40f,
             FogEnabled = true,
             FogLightColor = new Color(0.72f, 0.62f, 0.85f),
             FogDensity = 0.000015f,
             FogSkyAffect = 0.0f,
             FogAerialPerspective = 0.5f,
         };
+        // Niveaux du glow : du proche (3) au très large (6).
+        environment.SetGlowLevel(2, 1f);
+        environment.SetGlowLevel(3, 0.8f);
+        environment.SetGlowLevel(4, 1f);
+        environment.SetGlowLevel(5, 0.3f);
         _root.AddChild(new WorldEnvironment { Environment = environment });
 
         // Crépuscule (soleil couché, ombre de la Terre) : paramètres partagés via Twilight.

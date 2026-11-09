@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://crhfpv1ec3e8o"
+path="res://.godot/imported/rain-light.mp3-be4690eef9d9796a593ed181d00d722d.mp3str"
+
+[deps]
+
+source_file="res://Resources/Sounds/Rain and hail/rain-light.mp3"
+dest_files=["res://.godot/imported/rain-light.mp3-be4690eef9d9796a593ed181d00d722d.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

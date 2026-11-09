@@ -10,6 +10,15 @@ namespace Bomba.Cameras;
 /// </summary>
 public partial class ChaseCamera : Camera3D, IVehicleTracker
 {
+    /// <summary>Cockpit : la caméra prend le marqueur « CockpitCamera » du véhicule. Chase : poursuite.</summary>
+    public enum CameraMode { Cockpit, Chase }
+
+    [ExportGroup("Mode")]
+    /// <summary>Mode de vue initial. F5 bascule entre les deux.</summary>
+    [Export] public CameraMode Mode { get; set; } = CameraMode.Cockpit;
+    /// <summary>FOV en vue cockpit (degrés).</summary>
+    [Export] public float CockpitFov { get; set; } = 75f;
+
     [ExportGroup("Suivi")]
     /// <summary>Distance derrière la cible (m).</summary>
     [Export] public float Distance { get; set; } = 14f;
@@ -47,6 +56,9 @@ public partial class ChaseCamera : Camera3D, IVehicleTracker
     private float _shakeTime;
     private float _shakeAmplitude;
     private float _shakeDuration = 1f;
+    private float _chaseNear;
+
+    private const float CockpitNear = 0.05f;
 
     /// <summary>Véhicule suivi. Peut être changé à l'exécution, ou valoir null.</summary>
     public Vehicle Target
@@ -76,6 +88,7 @@ public partial class ChaseCamera : Camera3D, IVehicleTracker
         Current = true;
         _fov = BaseFov;
         Fov = BaseFov;
+        _chaseNear = Near;
         if (IsInstanceValid(_target))
             Snap();
     }
@@ -88,10 +101,45 @@ public partial class ChaseCamera : Camera3D, IVehicleTracker
 
     public override void _Process(double delta)
     {
+        if (Input.IsActionJustPressed(GameActions.CameraToggle) && IsInstanceValid(_target))
+        {
+            Mode = Mode == CameraMode.Cockpit ? CameraMode.Chase : CameraMode.Cockpit;
+            // Retour en poursuite : on repart de la position derrière la cible, pas de l'ancien lissage.
+            if (Mode == CameraMode.Chase)
+                Snap();
+        }
+
         if (!IsInstanceValid(_target))
             return;
 
         float dt = (float)delta;
+
+        // La secousse est appliquée à part, pour ne pas s'accumuler dans la position lissée.
+        Vector3 shake = Vector3.Zero;
+        if (_shakeTime > 0f)
+        {
+            float amp = _shakeAmplitude * (_shakeTime / _shakeDuration);
+            shake = new Vector3(GD.Randf() * 2f - 1f, GD.Randf() * 2f - 1f, GD.Randf() * 2f - 1f) * amp;
+            _shakeTime -= dt;
+        }
+
+        Node3D cockpit = Mode == CameraMode.Cockpit ? _target.GetNodeOrNull<Marker3D>("CockpitCamera") : null;
+        if (cockpit != null)
+        {
+            Transform3D ct = cockpit.GetGlobalTransformInterpolated();
+            ct.Origin += shake;
+            GlobalTransform = ct;
+            Near = CockpitNear;
+
+            float cockpitFov = CockpitFov + (_target.NitroActive ? NitroFovKick : 0f);
+            float kCockpitFov = 1f - Mathf.Exp(-FovSharpness * dt);
+            _fov = Mathf.Lerp(_fov, cockpitFov, kCockpitFov);
+            Fov = _fov;
+            return;
+        }
+
+        Near = _chaseNear;
+
         Transform3D t = _target.GetGlobalTransformInterpolated();
         Vector3 pos = t.Origin;
         Vector3 fwd = -t.Basis.Z.Normalized();
@@ -108,14 +156,6 @@ public partial class ChaseCamera : Camera3D, IVehicleTracker
         float kPos = 1f - Mathf.Exp(-PositionSharpness * dt);
         _smoothedPos = _smoothedPos.Lerp(desired, kPos);
 
-        // La secousse est appliquée à part, pour ne pas s'accumuler dans la position lissée.
-        Vector3 shake = Vector3.Zero;
-        if (_shakeTime > 0f)
-        {
-            float amp = _shakeAmplitude * (_shakeTime / _shakeDuration);
-            shake = new Vector3(GD.Randf() * 2f - 1f, GD.Randf() * 2f - 1f, GD.Randf() * 2f - 1f) * amp;
-            _shakeTime -= dt;
-        }
         GlobalPosition = _smoothedPos + shake;
 
         Vector3 aimPoint = pos + _target.LinearVelocity * LookAheadTime;

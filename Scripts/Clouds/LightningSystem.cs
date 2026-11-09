@@ -4,13 +4,16 @@ using Godot;
 namespace Bomba.Clouds;
 
 /// <summary>
-/// Met en scène les éclairs émis par <see cref="CloudField"/> : traits ramifiés et flash de lumière.
+/// Met en scène les éclairs émis par <see cref="CloudField"/> : canaux propagés (<see cref="LightningBolt"/>),
+/// flash de lumière et tonnerre (enregistrements par distance, fondus entre eux).
 /// Un éclair avec cible frappe cette cible ; sans cible, il peut descendre vers le bas (trait décoratif).
 /// </summary>
 public partial class LightningSystem : Node3D
 {
     /// <summary>Probabilité qu'un éclair décoratif ait un trait visible ; sinon, flash dans le nuage seul.</summary>
     [Export] public float BoltChance { get; set; } = 0.6f;
+    /// <summary>Probabilité qu'un éclair décoratif parcoure aussi le nuage (ramifications le long de sa frange).</summary>
+    [Export] public float SpiderChance { get; set; } = 0.85f;
     [Export] public float MinDownLength { get; set; } = 250f;
     /// <summary>Probabilité qu'un éclair sorti du nuage frappe la mer (nuage-sol).</summary>
     [Export] public float GroundStrikeChance { get; set; } = 0.6f;
@@ -19,6 +22,26 @@ public partial class LightningSystem : Node3D
     [Export] public float MaxDownLength { get; set; } = 6000f;
     [Export] public float FlashEnergy { get; set; } = 16f;
     [Export] public float FlashRange { get; set; } = 8000f;
+
+    [ExportGroup("Rendu")]
+    /// <summary>Luminosité HDR du canal. Au-dessus de 8 (seuil du glow de l'environnement) le fait rayonner : c'est le halo.</summary>
+    [Export] public float BoltEnergy { get; set; } = 20f;
+    /// <summary>Demi-largeur du tronc (m) ; les branches sont plus fines.</summary>
+    [Export] public float BoltWidth { get; set; } = 2.5f;
+    /// <summary>Demi-largeur minimale à l'écran (pixels) : le canal reste visible de loin.</summary>
+    [Export] public float BoltMinPixels { get; set; } = 1f;
+    [Export] public Color BoltColor { get; set; } = new(0.8f, 0.85f, 1f);
+
+    [ExportGroup("Tonnerre")]
+    /// <summary>
+    /// Enregistrements du tonnerre à différentes distances, croissantes. Chacun contient déjà le retard de
+    /// propagation, l'atténuation des aigus et la réverbération. Vide : sons par défaut (Resources/Sounds/Thunder).
+    /// </summary>
+    [Export] public AudioStream[] ThunderStreams { get; set; } = System.Array.Empty<AudioStream>();
+    /// <summary>Distance (m) de chaque enregistrement de <see cref="ThunderStreams"/>, dans le même ordre.</summary>
+    [Export] public float[] ThunderDistances { get; set; } = System.Array.Empty<float>();
+    [Export] public float ThunderVolumeDb { get; set; } = 0f;
+    [Export] public string ThunderBus { get; set; } = "Master";
 
     private const int MaxActiveBolts = 6;
     private const float DownStep = 40f;
@@ -32,6 +55,13 @@ public partial class LightningSystem : Node3D
     public override void _Ready()
     {
         _rng.Randomize();
+        // Tonnerre par défaut : Thunder1 enregistré à 0, 2, 6, 10 et 20 km.
+        if (ThunderStreams.Length == 0)
+        {
+            ThunderDistances = new[] { 0f, 2000f, 6000f, 10000f, 20000f };
+            ThunderStreams = new[] { "Thunder1", "Thunder1-2km", "Thunder1-6km", "Thunder1-10km", "Thunder1-20km" }
+                .Select(name => GD.Load<AudioStream>($"res://Resources/Sounds/Thunder/{name}.wav")).ToArray();
+        }
         TryConnectToField();
     }
 
@@ -63,10 +93,80 @@ public partial class LightningSystem : Node3D
     {
         if (hasTarget)
             AddBolt(position, target);
-        else if (_rng.Randf() < BoltChance)
-            AddBolt(position, DownwardTarget(position));
+        else
+        {
+            if (_rng.Randf() < SpiderChance)
+                AddSpider(position);
+            if (_rng.Randf() < BoltChance)
+                AddBolt(position, DownwardTarget(position));
+        }
 
         AddFlash(position);
+        ScheduleThunder(position);
+    }
+
+    /// <summary>
+    /// Tonnerre : les deux enregistrements qui encadrent la distance de l'éclair sont joués ensemble, en fondu
+    /// enchaîné à puissance constante (à 8 km : moitié 6 km, moitié 10 km). Les fichiers contiennent déjà le retard, l'atténuation
+    /// des aigus et la réverbération : rien n'est ajouté ici, sauf une baisse de volume au-delà du plus lointain.
+    /// Le son est placé à l'éclair (direction), sans atténuation 3D.
+    /// </summary>
+    private void ScheduleThunder(Vector3 position)
+    {
+        int n = Mathf.Min(ThunderStreams.Length, ThunderDistances.Length);
+        Camera3D cam = GetViewport()?.GetCamera3D();
+        if (n == 0 || cam == null)
+            return;
+
+        float distance = cam.GlobalPosition.DistanceTo(position);
+        int hi = 0;
+        while (hi < n && ThunderDistances[hi] < distance)
+            hi++;
+        if (hi == 0)
+            PlayThunder(ThunderStreams[0], position, 1f);
+        else if (hi == n)
+        {
+            // Au-delà du plus lointain : −6 dB par doublement de distance.
+            float far = ThunderDistances[n - 1];
+            PlayThunder(ThunderStreams[n - 1], position, far / Mathf.Max(distance, far));
+        }
+        else
+        {
+            float t = (distance - ThunderDistances[hi - 1]) / Mathf.Max(ThunderDistances[hi] - ThunderDistances[hi - 1], 1f);
+            PlayThunder(ThunderStreams[hi - 1], position, Mathf.Sqrt(1f - t));   // puissance constante
+            PlayThunder(ThunderStreams[hi], position, Mathf.Sqrt(t));
+        }
+    }
+
+    private void PlayThunder(AudioStream stream, Vector3 position, float gain)
+    {
+        if (stream == null || gain < 0.01f)
+            return;
+        var player = new AudioStreamPlayer3D
+        {
+            Stream = stream,
+            Bus = ThunderBus,
+            VolumeDb = ThunderVolumeDb + Mathf.LinearToDb(gain),
+            AttenuationModel = AudioStreamPlayer3D.AttenuationModelEnum.Disabled,   // distance déjà dans le fichier
+            MaxDistance = 0f,
+            AttenuationFilterDb = 0f,
+            DopplerTracking = AudioStreamPlayer3D.DopplerTrackingEnum.Disabled,
+        };
+        AddChild(player);
+        player.GlobalPosition = position;
+        player.Finished += player.QueueFree;
+        player.Play();
+    }
+
+    private void AddSpider(Vector3 from)
+    {
+        if (GetChildren().OfType<LightningBolt>().Count() >= MaxActiveBolts)
+            return;
+
+        var bolt = new LightningBolt();
+        AddChild(bolt);
+        bolt.SetLook(BoltEnergy, BoltWidth, BoltMinPixels, BoltColor);
+        bolt.SetupSpider(from, _field, _rng);
     }
 
     private void AddBolt(Vector3 from, Vector3 to)
@@ -76,6 +176,7 @@ public partial class LightningSystem : Node3D
 
         var bolt = new LightningBolt();
         AddChild(bolt);
+        bolt.SetLook(BoltEnergy, BoltWidth, BoltMinPixels, BoltColor);
         bolt.Setup(from, to, _rng);
     }
 

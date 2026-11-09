@@ -84,6 +84,12 @@ public partial class CloudShots : Node
         _shots.Add(("anti-solaire", new Vector3(0, above, 0), new Vector3(0, above, 0) - toSun * 1000f + Vector3.Up * 120f, false));
         Vector3 high = new(0, Bomba.Core.Twilight.ShadowAltitude + 900f, 0);
         _shots.Add(("altitude", high, high + toSun * 1000f - Vector3.Up * 40f, false));
+        // Pluie : sous la nappe, face au rideau de pluie du cumulonimbus (de la mer à la base des nuages).
+        Vector3 stormBase = storm.Position with { Y = 120f };
+        _shots.Add(("pluie", Toward(Vector3.Zero, stormBase, storm.Radius * 0.6f + 5000f) with { Y = 120f }, stormBase, false));
+        // Sous l'orage : dans la pluie (particules, vent d'orage), regard vers l'extérieur à travers le rideau.
+        Vector3 underPos = Toward(Vector3.Zero, stormBase, storm.Radius * 0.35f) with { Y = 150f };
+        _shots.Add(("sous l'orage", underPos, underPos + (underPos - stormBase) with { Y = 0f } + Vector3.Up * 60f, false));
         // Bord : caméra au ras du flanc d'un cumulus, regard tangent à travers son bord vers l'horizon
         // (les nuages lointains doivent rester visibles à travers le bord fin).
         Vector3 side = new Vector3(1f, 0f, 0.35f).Normalized();
