@@ -16,7 +16,7 @@ public partial class DebugHud : CanvasLayer, IVehicleTracker
     public Vehicle Target { get; set; }
 
     private const string HelpText =
-        "[AZERTY] Poussée Z · Frein S · Lacet Q/D · Tangage flèches haut/bas · Roulis A/E · Vertical Espace/Ctrl · Voile W/C · Nitro Maj · Véhicule Tab · Respawn R · Debug F1 (1-9 : couper un module)";
+        "[AZERTY] Poussée Z · Frein S · Réticule souris : gauche/droite = incliner, haut = cabrer, bas = piquer · Clavier : roulis Q/D ou A/E, tangage flèches · Nitro Maj · Recentrer clic molette · Souris Échap · Véhicule Tab · Respawn R · Caméra F5 · Debug F1";
 
     private static readonly Color ColorPowered = new(0.35f, 0.9f, 0.4f);
     private static readonly Color ColorNitro = new(1f, 0.6f, 0.1f);

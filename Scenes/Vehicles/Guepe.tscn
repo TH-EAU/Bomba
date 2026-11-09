@@ -26,12 +26,9 @@ angular_damp = 2.0
 CenterOfMassOffset = Vector3(0, -0.4, 0)
 ForwardDrag = 0.015
 PowerWeight = 3.0
-MaxTurnRates = Vector3(1.8, 1.8, 2.5)
 HoverAssist = 0.0
 LateralGripPowered = 0.8
 VerticalGripPowered = 0.4
-PitchAutoLevel = true
-RollAssist = 14.0
 
 [node name="Collision" type="CollisionShape3D" parent="."]
 shape = SubResource("BoxShape3D_collision")

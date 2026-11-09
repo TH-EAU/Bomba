@@ -327,3 +327,59 @@
   - érosion CPU du géant tournée et inclinée hors des axes.
 - Grille verticale du géant laissée à 80 étages (exposant 2,2). L'essai à 128 étages faisait apparaître des marches carrées alignées sur les axes sur l'enclume. Ont été écartés comme cause : la marge du SDF, l'azimut du soleil, la déformation et le masque du shader, l'érosion et le bruit de déformation CPU. La cause exacte n'est pas trouvée.
 - Coût final : calcul au chargement inchangé (4,4 s) ; 52 à 60 FPS sur tous les plans de CloudShots.
+
+## 2026-11-09 : pilotage « incliner et tirer » (gouvernail)
+- Demande de l'utilisateur : peu de commandes, simples ; un débutant se déplace librement, un expert domine ; tourner prend du temps ; le roulis crée le virage, tirer le serre, trop de roulis met sur le dos (looping possible). Décisions de l'utilisateur :
+  - réticule bas = piquer, et frein au-delà de 80 % de la course ;
+  - retour à plat doux au neutre.
+- `Vehicle.ApplySteering` réécrit, groupe « Pilotage » :
+  - **roulis = inclinaison demandée et tenue** (`MaxBankDeg` 180 : roulis plein = sur le dos), rejointe à `RollRateDeg` 140 °/s avec `BankResponseTime` 0,3 s. Avec un réticule qui reste où on le laisse, une commande en vitesse de roulis aurait donné un tonneau continu ;
+  - **tangage** en vitesse (`PitchRateDeg` 45 °/s), maintien d'assiette au neutre (`PitchHold`) ;
+  - **virage dû à l'inclinaison** : lacet de coordination autour de la verticale du monde, `BankTurnRateDeg` 22 × sin(inclinaison) × cos(tangage) ;
+  - **plus de lacet direct** : la gouverne de direction fait déraper, ce qui est contre-intuitif ;
+  - **rampe** : accélération angulaire plafonnée (`RateRampTime` 0,35 s), freinage d'une rotation 4 fois plus fort (élan au départ, arrêt net, et les couples des modules ne font pas dépasser la consigne) ;
+  - **retour à plat** (`AutoLevelTime` 1,2 s) seulement roulis et tangage au neutre, par le côté le plus court (aussi depuis le dos). En tirant roulis au neutre, le roulis n'est pas corrigé : c'est ce qui permet le looping. Nez à plus de 60° au neutre : il est d'abord ramené vers 55°.
+  - `GetDesiredTorqueAxis` renvoie la commande réellement calculée : les modules lisaient le roulis comme une vitesse et faisaient dériver l'inclinaison.
+- Supprimés : `MaxTurnRates`, `SteerResponse`, `RollAssist`, `AutoBankDegrees`, `PitchAutoLevel` (scènes nettoyées). Zeppelin : inclinaison 30°, roulis 30 °/s, tangage 15 °/s, rampe 0,8 s.
+- CloudSurfer : réglage `VerticalGripPowered = 0.2` de la scène retiré (retour à 1,5). Avec cette valeur, la vitesse ne suivait pas le nez en tirant, et l'engin perdait toute sa vitesse en virage serré (68 → 4 m/s).
+- Sonde (CloudSurfer, plein gaz, nouveaux scénarios dans `FlightProbe`) :
+  - palier ~58 m/s, altitude tenue ;
+  - incliné 45° : 18 °/s, −3 m/s d'altitude ;
+  - 75° + tirer : ~80 °/s, vitesse tenue (52 à 70 m/s), inclinaison réelle ~88° (dépassement de 13° dû au couplage tangage-roulis, toléré) ;
+  - looping complet en ~7 s ;
+  - lâché depuis le dos : à plat en ~2 s.
+- Sensibilité (demande de l'utilisateur : « rendre tous les contrôles moins sensibles », les réglages de pilotage étant trop nombreux) : un seul réglage, `PlayerVehicleController.Sensitivity` (0,1 à 1, défaut 0,5). Il ralentit le réticule (déplacement souris × sensibilité) et applique une courbe « expo » de force 1 − sensibilité au roulis et au tangage. Les petits mouvements sont doux, les grands restent pleins. À 0,5, mi-course donne 31 % au lieu de 50 %.
+- Rouler ne fait plus que rouler (demande de l'utilisateur : « c'est moi, avec le joystick, qui pousse vers le haut et ça génère le virage ») :
+  - `BankTurnRateDeg` passe à 0 par défaut (et retiré du Zeppelin) ;
+  - le maintien d'assiette tourne autour d'un axe horizontal, et non de l'aile qui penche une fois incliné (il faisait virer).
+  - Sonde : incliné 45° → cap stable (≈ 1 °/s de dérive) ; le virage vient de tirer.
+- Virage inversé en relâchant (signalé par l'utilisateur) : en ramenant le réticule vers le centre, un léger piqué involontaire, avec l'engin incliné, faisait virer du côté opposé (symétrique du « tirer »).
+  - Piquer tourne maintenant autour d'un axe horizontal : il baisse le nez sans faire virer. Tirer garde l'axe de l'aile.
+  - Zone neutre verticale du réticule : `MousePitchDeadband` 0,08.
+  - Sonde « 45° + piquer » : le nez descend, le cap reste fixe.
+- Roulis repassé en vitesse, comme un joystick (signalé par l'utilisateur : « tu appliques une rotation automatique »). En commande d'angle, ramener le réticule vers le centre faisait revenir l'engin vers l'horizontale.
+  - Pousser fait rouler (`RollRateDeg` 120 °/s), lâcher garde l'inclinaison.
+  - Retour à plat seulement après `AutoLevelDelay` (1,5 s) sans aucune commande, en `AutoLevelTime` 1,5 s.
+  - `MaxBankDeg` devient une limite (Zeppelin 30°). `BankResponseTime` supprimé.
+  - Clavier : `KeyboardBank` 0,7 de la vitesse de roulis.
+  - Sonde : roulis 0,5 s → 44°, inclinaison tenue 1,5 s, puis à plat.
+- Rotation parasite au roulis à fond (signalée par l'utilisateur) :
+  - **cause** : `GetDesiredTorqueAxis` transmettait aussi le roulis aux gouvernes (profondeur, dérive) et aux moteurs orientables. Des gouvernes dans l'axe ne peuvent pas rouler : elles produisaient du tangage et du lacet, énormes à grande vitesse. Sonde : nez à +82° et cap affolé au roulis à fond, propre au roulis doux ;
+  - **correction** : les modules ne reçoivent plus que le tangage, le roulis étant assuré par le couple direct. Le maintien d'assiette agit à toute inclinaison (axe horizontal) ;
+  - `RollRateDeg` 120 → 75 °/s, remise à plat plafonnée à 40 °/s ;
+  - **sonde** : roulis à fond de 40° à 125°, nez stable à 0°, cap fixe.
+- À surveiller : avec les réglages actuels du CloudSurfer (≈ 140 m/s), tirer à fond fait un virage très serré qui écroule la vitesse (144 → 23 m/s en 1,5 s).
+- Bas du réticule (demande de l'utilisateur : « un simple piqué vers le bas, pas vers le bas de la carte ») : le piqué tourne de nouveau autour de l'aile (repère de l'engin), symétrique de tirer. L'aérofrein du bas du réticule est désactivé (`MouseBrakeStart` = 1, arc rouge masqué) ; le frein reste sur S. La zone neutre verticale (`MousePitchDeadband` 0,08) est conservée contre le piqué involontaire.
+- Retour à plat automatique supprimé (demande de l'utilisateur : « l'assistance pour les débutants est très mauvaise ») : `AutoLevelTime` = 0 par défaut. Le code reste, réactivable par véhicule. Le maintien d'assiette (`PitchHold`) est conservé.
+
+## 2026-11-09 : CloudSurfer à 1 tonne
+- Demande de l'utilisateur : l'engin doit peser environ une tonne. À 10 kg, il était instable, et la poussée ne tenait pas le poids réel.
+- Ce qui dépend de la masse : les forces en newtons (poussée des moteurs, portance, traînée et contrôle des gouvernes). La traînée de `Vehicle`, le pilotage, le nitro et `HoverAssist` sont des accélérations, indépendantes de la masse.
+- Réglage = l'équilibre validé à 20 kg × 50 :
+  - `mass` 1 000 ;
+  - profil de moteur dédié `Resources/Thrusters/CloudSurfer.tres` (22 500 N par moteur ; Charbon, partagé avec le Rafiot, est inchangé) ;
+  - `HullLift` : `LiftCoefficient` 7,5, `MaxLift` 10 500, `DragCoefficient` 1 ;
+  - gouvernes : `ControlStrength` 1,5, `DragCoefficient` 0,25 ;
+  - `ForwardDrag` 0,012 (vitesse de palier validée).
+- Sonde : palier ~58 m/s, altitude tenue ; incliné + tirer ~50 °/s, vitesse tenue ; frein 64 → 40 m/s ; nitro ~95 m/s ; gaz coupés : chute immédiate.
+- Note : sans retour à plat automatique, les scénarios de la sonde s'enchaînent avec l'inclinaison héritée (le « looping » part incliné). À reprendre si on a besoin de mesures isolées.

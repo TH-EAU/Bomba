@@ -19,6 +19,10 @@ roughness = 0.8
 [node name="Zeppelin" type="RigidBody3D"]
 script = ExtResource("1_vehicle")
 DisplayName = "Le Zeppelin"
+MaxBankDeg = 30.0
+RollRateDeg = 30.0
+PitchRateDeg = 15.0
+RateRampTime = 0.8
 mass = 30.0
 gravity_scale = 1.0
 angular_damp = 2.0
@@ -26,12 +30,8 @@ CenterOfMassOffset = Vector3(0, -1, 0)
 ForwardDrag = 0.03
 LateralGripPowered = 1.0
 VerticalGripPowered = 0.6
-MaxTurnRates = Vector3(0.5, 0.6, 0.8)
-RollAssist = 3.0
-AutoBankDegrees = 10.0
 AirWeight = 0.3
 HoverAssist = 0.0
-PitchAutoLevel = true
 
 [node name="NacelleCollision" type="CollisionShape3D" parent="."]
 shape = SubResource("BoxShape3D_nacelle")

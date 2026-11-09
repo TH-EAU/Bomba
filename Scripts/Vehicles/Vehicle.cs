@@ -50,19 +50,23 @@ public partial class Vehicle : RigidBody3D
 	[Export] public float ReferenceSpeed { get; set; } = 40f;
 	[Export(PropertyHint.Range, "0,1,0.01")] public float MinAuthority { get; set; } = 0.05f;
 
-	[ExportGroup("Pilotage assisté")]
-	/// <summary>Vitesses angulaires max (rad/s) : tangage, lacet, roulis.</summary>
-	[Export] public Vector3 MaxTurnRates { get; set; } = new(1.4f, 1.2f, 2.0f);
-	/// <summary>Réactivité de l'asservissement en vitesse angulaire (1/s).</summary>
-	[Export] public float SteerResponse { get; set; } = 6f;
-	/// <summary>Force du rappel en roulis vers l'horizontale (et vers l'inclinaison de virage).</summary>
-	[Export] public float RollAssist { get; set; } = 10f;
-	/// <summary>Inclinaison automatique en virage (degrés) quand on tourne en lacet.</summary>
-	[Export] public float AutoBankDegrees { get; set; } = 25f;
-	/// <summary>Maintien d'assiette en tangage quand le joueur ne touche pas au tangage (1/s²). 0 = désactivé.</summary>
+	[ExportGroup("Pilotage")]
+	/// <summary>Vitesse de roulis à fond (°/s). Comme un joystick : pousser fait rouler, lâcher garde l'inclinaison.</summary>
+	[Export] public float RollRateDeg { get; set; } = 75f;
+	/// <summary>Inclinaison maximale (°). 180 = libre (tonneaux, vol sur le dos) ; un dirigeable la limite.</summary>
+	[Export] public float MaxBankDeg { get; set; } = 180f;
+	/// <summary>Vitesse de tangage à fond (°/s). Tirer en étant incliné serre le virage ; tirer à fond fait un looping.</summary>
+	[Export] public float PitchRateDeg { get; set; } = 45f;
+	/// <summary>Temps (s) pour atteindre la vitesse de rotation demandée : inertie de pilotage, le nez prend son élan.</summary>
+	[Export] public float RateRampTime { get; set; } = 0.35f;
+	/// <summary>Virage dû à l'inclinaison seule (°/s à 90°). 0 (défaut) : rouler ne fait que rouler, c'est tirer qui fait virer.</summary>
+	[Export] public float BankTurnRateDeg { get; set; } = 0f;
+	/// <summary>Retour à plat (s), aussi depuis le dos, seulement après <see cref="AutoLevelDelay"/> sans aucune commande. 0 = désactivé.</summary>
+	[Export] public float AutoLevelTime { get; set; } = 0f;
+	/// <summary>Délai (s) sans commande de roulis ni de tangage avant le retour à plat : jamais pendant une manœuvre.</summary>
+	[Export] public float AutoLevelDelay { get; set; } = 1.5f;
+	/// <summary>Maintien d'assiette (1/s) quand le tangage est au neutre : l'engin garde sa pente. 0 = désactivé.</summary>
 	[Export] public float PitchHold { get; set; } = 4f;
-	/// <summary>Vrai : sans commande, le nez revient à l'horizontale (hélico, ballon). Faux : garde l'assiette relâchée.</summary>
-	[Export] public bool PitchAutoLevel { get; set; }
 
 	[ExportGroup("Traînée (accélérations)")]
 	/// <summary>Traînée quadratique vers l'avant (1/m).</summary>
@@ -152,6 +156,9 @@ public partial class Vehicle : RigidBody3D
 	private float _ballisticTimer;
 	private float _gravity = 9.8f;
 	private float _heldPitch;
+	private Vector3 _desiredAxis;
+	private float _neutralTime;
+	private static readonly float AutoLevelMaxRate = Mathf.DegToRad(40f);   // remise à plat douce
 	private const float MaxHeldPitch = 1.05f; // ≈ 60°
 
 	public override void _Ready()
@@ -311,49 +318,101 @@ public partial class Vehicle : RigidBody3D
 		ApplyCentralForce(basis * new Vector3(ax, ay, az) * Mass);
 	}
 
+	/// <summary>Inclinaison (rad) : 0 à plat, positive aile droite basse, ±π sur le dos.</summary>
+	public float Bank
+	{
+		get
+		{
+			Basis b = GlobalBasis.Orthonormalized();
+			return Mathf.Atan2(-b.X.Y, b.Y.Y);
+		}
+	}
+
 	/// <summary>
-	/// Pilotage assisté : asservit la vitesse angulaire vers une cible donnée par les commandes,
-	/// avec une intensité proportionnelle à l'autorité. Sans autorité, l'engin garde sa rotation.
+	/// Pilotage « incliner et tirer » : le roulis commande une inclinaison (tenue), l'inclinaison fait virer (lacet de coordination autour de
+	/// la verticale du monde), tirer serre le virage ; tirer à fond fait un looping. Pas de lacet direct.
+	/// La vitesse de rotation visée est approchée avec une accélération plafonnée (RateRampTime) : le nez prend son
+	/// élan. Au neutre : maintien d'assiette, et retour à plat (aussi depuis le dos). Tout est × autorité.
 	/// </summary>
 	private void ApplySteering(VehicleInput input)
 	{
 		Basis basis = GlobalBasis.Orthonormalized();
 		Vector3 right = basis.X;
 		Vector3 forward = -basis.Z;
+		float bank = Mathf.Atan2(-right.Y, basis.Y.Y);
+		float noseUp = Mathf.Asin(Mathf.Clamp(forward.Y, -1f, 1f));
+		float rollRate = Mathf.DegToRad(RollRateDeg);
+		float pitchRate = Mathf.DegToRad(PitchRateDeg);
 
-		// Axes globaux : tangage nez haut = +Right, roulis à droite = +Forward,
-		// lacet à droite = -Up DU MONDE (arcade : virer ne fait pas piquer quand on est incliné).
-		Vector3 target = (right * input.Pitch * MaxTurnRates.X
-						  + forward * input.Roll * MaxTurnRates.Z
-						  - Vector3.Up * input.Yaw * MaxTurnRates.Y) * Authority;
+		float rollCmd = 0f;
+		Vector3 hold = Vector3.Zero;
+		float pitchCmd = input.Pitch * pitchRate;
+		bool pitchNeutral = Mathf.Abs(input.Pitch) < 0.02f;
+		bool rollNeutral = Mathf.Abs(input.Roll) < 0.02f;
 
-		Vector3 accel = (target - AngularVelocity) * SteerResponse * Authority;
-
-		// Tangage : maintien d'assiette (l'asservissement en vitesse seul laisse dériver le nez
-		// sous un couple constant). Assiette maintenue plafonnée, inactif près de la verticale.
-		float forwardY = forward.Y;
-		float currentPitch = Mathf.Asin(Mathf.Clamp(forwardY, -1f, 1f));
-		if (Mathf.Abs(input.Pitch) > 0.05f)
+		// Maintien d'assiette : tangage au neutre, on garde la pente (plafonnée à ±60°).
+		if (!pitchNeutral)
+			_heldPitch = Mathf.Clamp(noseUp, -MaxHeldPitch, MaxHeldPitch);
+		else if (PitchHold > 0f && Mathf.Abs(forward.Y) < 0.95f)
 		{
-			_heldPitch = PitchAutoLevel ? 0f : Mathf.Clamp(currentPitch, -MaxHeldPitch, MaxHeldPitch);
-		}
-		else if (PitchHold > 0f && Mathf.Abs(forwardY) < 0.95f)
-		{
-			float upright = basis.Y.Y >= 0f ? 1f : -1f;
-			accel += right * ((_heldPitch - currentPitch) * PitchHold * Authority * upright);
-		}
-
-		// Roulis : rappel vers l'horizontale, ou vers l'inclinaison de virage.
-		float rollFreedom = 1f - Mathf.Abs(input.Roll);
-		if (RollAssist > 0f && rollFreedom > 0f)
-		{
-			float targetRightY = -input.Yaw * Mathf.Sin(Mathf.DegToRad(AutoBankDegrees));
-			float error = right.Y - targetRightY;
-			// Aile droite trop haute (error > 0) → rouler à droite (+Forward).
-			accel += forward * (error * RollAssist * rollFreedom * Mathf.Lerp(0.3f, 1f, Authority));
+			// Autour d'un axe HORIZONTAL (et non de l'aile, qui penche quand on est incliné) : le maintien ne fait que
+			// lever ou baisser le nez, il ne fait jamais virer.
+			Vector3 level = forward.Cross(Vector3.Up);
+			if (level.LengthSquared() > 1e-6f)
+				hold = level.Normalized() * Mathf.Clamp((_heldPitch - noseUp) * PitchHold, -pitchRate, pitchRate);
 		}
 
-		ApplyAngularAcceleration(accel);
+		// Roulis comme un joystick : pousser fait rouler (vitesse), lâcher garde l'inclinaison. Retour à plat seulement
+		// après AutoLevelDelay sans aucune commande (aide aux débutants), par le côté le plus court.
+		_neutralTime = rollNeutral && pitchNeutral ? _neutralTime + (float)GetPhysicsProcessDeltaTime() : 0f;
+		bool levelling = AutoLevelTime > 0f && _neutralTime >= AutoLevelDelay;
+		if (!rollNeutral)
+		{
+			rollCmd = input.Roll * rollRate;
+			// Inclinaison maximale : on n'enroule pas au-delà.
+			float maxBank = Mathf.DegToRad(MaxBankDeg);
+			if (MaxBankDeg < 179f && Mathf.Abs(bank) >= maxBank && Mathf.Sign(rollCmd) == Mathf.Sign(bank))
+				rollCmd = 0f;
+		}
+		else if (levelling && Mathf.Abs(noseUp) < Mathf.DegToRad(70f))
+			rollCmd = Mathf.Clamp(-bank / Mathf.Max(AutoLevelTime * 0.4f, 0.05f), -AutoLevelMaxRate, AutoLevelMaxRate);
+
+		// Retour à plat, nez trop près de la verticale (après un looping lâché) : on ramène d'abord le nez vers ±55°.
+		// Sens du tangage selon le dos ou le ventre (up.Y), pour baisser le nez dans tous les cas.
+		bool recovering = levelling && Mathf.Abs(noseUp) > Mathf.DegToRad(60f);
+		if (recovering)
+		{
+			float wanted = Mathf.Sign(noseUp) * Mathf.DegToRad(55f);
+			pitchCmd = Mathf.Clamp((wanted - noseUp) / 0.5f * (basis.Y.Y >= 0f ? 1f : -1f), -pitchRate, pitchRate);
+		}
+
+		// Virage dû à l'inclinaison (lacet à droite = -Up du monde), nul nez à la verticale.
+		float coordination = Mathf.DegToRad(BankTurnRateDeg) * Mathf.Sin(bank) * Mathf.Cos(noseUp);
+
+		// Tirer et piquer tournent autour de l'aile (repère de l'engin) : piquer baisse le nez par rapport au bateau.
+		Vector3 pitchAxis = right;
+		Vector3 target = (forward * rollCmd + pitchAxis * pitchCmd + hold - Vector3.Up * coordination) * Authority;
+		// Commande transmise aux modules (gouvernes, moteurs orientables) : le tangage seulement. Une gouverne dans l'axe
+		// ne peut pas rouler : à qui on demandait du roulis, elle produisait du tangage et du lacet parasites, énormes à
+		// grande vitesse (le nez partait pendant un roulis franc). Le roulis est assuré par le couple direct ci-dessous.
+		_desiredAxis = pitchAxis * (pitchCmd / pitchRate) - Vector3.Up * (coordination / pitchRate);
+
+		// Rampe : accélération angulaire plafonnée par axe de l'engin (x tangage, y lacet, z roulis).
+		float dt = (float)GetPhysicsProcessDeltaTime();
+		float ramp = Mathf.Max(RateRampTime, 0.02f);
+		Vector3 local = basis.Inverse() * (target - AngularVelocity) / Mathf.Max(dt, 1e-4f);
+		Vector3 limit = new Vector3(pitchRate, pitchRate + Mathf.DegToRad(BankTurnRateDeg), rollRate) / ramp * Authority;
+		// Freiner une rotation est permis 4 fois plus fort que la lancer : élan au départ, arrêt net
+		// (et les couples des gouvernes et moteurs orientables ne font pas dépasser la consigne).
+		Vector3 spin = basis.Inverse() * AngularVelocity;
+		local = new Vector3(ClampRamp(local.X, spin.X, limit.X), ClampRamp(local.Y, spin.Y, limit.Y), ClampRamp(local.Z, spin.Z, limit.Z));
+		ApplyAngularAcceleration(basis * local);
+	}
+
+	private static float ClampRamp(float accel, float spin, float limit)
+	{
+		float l = accel * spin < 0f ? limit * 4f : limit;
+		return Mathf.Clamp(accel, -l, l);
 	}
 
 	/// <summary>Applique une accélération angulaire globale (rad/s²), indépendante de l'inertie.</summary>
@@ -370,12 +429,11 @@ public partial class Vehicle : RigidBody3D
 
 	/// <summary>
 	/// Axe de rotation global souhaité d'après les commandes (longueur 0..√3).
-	/// Tangage nez haut = +Right, lacet droite = -Up du monde, roulis droite = +Forward.
+	/// Tangage nez haut = +Right, roulis droite = +Forward, virage dû à l'inclinaison = -Up du monde.
 	/// </summary>
 	public Vector3 GetDesiredTorqueAxis()
 	{
-		VehicleInput i = CurrentInput;
-		return Right * i.Pitch - Vector3.Up * i.Yaw + Forward * i.Roll;
+		return _desiredAxis;
 	}
 
 	/// <summary>

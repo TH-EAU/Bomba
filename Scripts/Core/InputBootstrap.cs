@@ -35,15 +35,14 @@ public partial class InputBootstrap : Node
 
     public override void _EnterTree()
     {
-        // Clavier : poussée et lacet sur WASD (ZQSD en AZERTY), tangage sur les flèches.
+        // Clavier (touches physiques) : poussée W (Z en AZERTY), frein S, tangage flèches haut/bas,
+        // roulis Q/D, A/E ou flèches gauche/droite (toutes les paires sont liées). Manette : stick gauche X et épaules.
         Bind(GameActions.Throttle, Key(Godot.Key.W), Axis(JoyAxis.TriggerRight, 1f));
         Bind(GameActions.Brake, Key(Godot.Key.S), Axis(JoyAxis.TriggerLeft, 1f));
         Bind(GameActions.PitchUp, Key(Godot.Key.Up), Axis(JoyAxis.LeftY, -1f));
         Bind(GameActions.PitchDown, Key(Godot.Key.Down), Axis(JoyAxis.LeftY, 1f));
-        Bind(GameActions.YawLeft, Key(Godot.Key.A), Key(Godot.Key.Left), Axis(JoyAxis.LeftX, -1f));
-        Bind(GameActions.YawRight, Key(Godot.Key.D), Key(Godot.Key.Right), Axis(JoyAxis.LeftX, 1f));
-        Bind(GameActions.RollLeft, Key(Godot.Key.Q), Button(JoyButton.LeftShoulder));
-        Bind(GameActions.RollRight, Key(Godot.Key.E), Button(JoyButton.RightShoulder));
+        Bind(GameActions.RollLeft, Key(Godot.Key.A), Key(Godot.Key.Q), Key(Godot.Key.Left), Axis(JoyAxis.LeftX, -1f), Button(JoyButton.LeftShoulder));
+        Bind(GameActions.RollRight, Key(Godot.Key.D), Key(Godot.Key.E), Key(Godot.Key.Right), Axis(JoyAxis.LeftX, 1f), Button(JoyButton.RightShoulder));
         Bind(GameActions.VerticalUp, Key(Godot.Key.Space), Axis(JoyAxis.RightY, -1f));
         Bind(GameActions.VerticalDown, Key(Godot.Key.Ctrl), Axis(JoyAxis.RightY, 1f));
         Bind(GameActions.TrimLeft, Key(Godot.Key.Z), Button(JoyButton.DpadLeft));
