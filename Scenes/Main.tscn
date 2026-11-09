@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3 uid="uid://uf7iixraxb4d"]
+[gd_scene load_steps=16 format=3 uid="uid://uf7iixraxb4d"]
 
 [ext_resource type="Script" uid="uid://c0b45v830xeg3" path="res://Scripts/Core/GameRoot.cs" id="1_root"]
 [ext_resource type="Script" uid="uid://l3qtew02dtwn" path="res://Scripts/Arena/ArenaBuilder.cs" id="2_arena"]
@@ -14,6 +14,7 @@
 [ext_resource type="Script" uid="uid://bn6qn3alqb3q2" path="res://Scripts/Arena/Searchlight.cs" id="12_searchlight"]
 [ext_resource type="Script" uid="uid://5t4p7x4gdd02" path="res://Scripts/Clouds/LightningSystem.cs" id="13_lightning"]
 [ext_resource type="Script" uid="uid://is82f5emwbt1" path="res://Scripts/Effects/ScreenDroplets.cs" id="14_droplets"]
+[ext_resource type="Material" uid="uid://b1nfc0gesua6u" path="res://Resources/Sky/sky_material.tres" id="15_sky"]
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1_root")
@@ -21,9 +22,12 @@ VehicleScenes = Array[PackedScene]([ExtResource("7_rafiot"), ExtResource("8_zepp
 
 [node name="Arena" type="Node3D" parent="."]
 script = ExtResource("2_arena")
+SkyMaterial = ExtResource("15_sky")
 
 [node name="Clouds" type="Node" parent="."]
 script = ExtResource("10_clouds")
+CumulonimbusRadiusMin = 7999.0
+AnvilSpread = 0.0
 
 [node name="CloudEffects" type="Node" parent="."]
 script = ExtResource("11_cloudfx")
@@ -73,4 +77,3 @@ script = ExtResource("13_lightning")
 
 [node name="ScreenDroplets" type="CanvasLayer" parent="."]
 script = ExtResource("14_droplets")
-

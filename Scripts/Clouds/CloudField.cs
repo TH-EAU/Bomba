@@ -65,8 +65,6 @@ public partial class CloudField : Node, IWindSource
 	[Export] public float VerticalExponent { get; set; } = 1.8f;
 
 	[ExportGroup("Volume géant")]
-	/// <summary>Active le cumulonimbus géant (grille géante). Désactivé : aucun calcul ni rendu de cette grille.</summary>
-	[Export] public bool GiantEnabled { get; set; } = true;
 	/// <summary>Période de la grille géante = TileSize × ce facteur (≈ 49 km : un cumulonimbus par période).</summary>
 	[Export] public int GiantTileFactor { get; set; } = 4;
 	[Export] public float GiantMaxAltitude { get; set; } = 14000f;
@@ -102,10 +100,16 @@ public partial class CloudField : Node, IWindSource
 
 	[ExportGroup("Cumulonimbus (orages)")]
 	/// <summary>
-	/// Direction (X, Z) du cumulonimbus vu du point d'apparition. Il n'y en a qu'un dans tout le monde :
-	/// la grille géante ne se répète pas.
+	/// Active le cumulonimbus géant (seule source des orages et des éclairs). Désactivé : la grille géante
+	/// n'est ni calculée ni rendue (chargement plus court d'environ 2 s). Lu au calcul des nuages, au lancement.
 	/// </summary>
-	[Export] public Vector2 CumulonimbusDirection { get; set; } = new(-0.6f, -0.8f);
+	[Export] public bool GiantEnabled { get; set; } = true;
+	/// <summary>
+	/// Position du centre du cumulonimbus (X, Z, en mètres, monde ; le joueur apparaît vers l'origine).
+	/// Il n'y en a qu'un dans tout le monde. Sa base a un rayon de <see cref="CumulonimbusRadiusMin"/> à
+	/// <see cref="CumulonimbusRadiusMax"/> : à moins de ~11 km de l'origine, le joueur apparaît dans l'orage.
+	/// </summary>
+	[Export] public Vector2 GiantPosition { get; set; } = new(-8700f, -11600f);
 	[Export] public float CumulonimbusRadiusMin { get; set; } = 8000f;
 	[Export] public float CumulonimbusRadiusMax { get; set; } = 11000f;
 	[Export] public float CumulonimbusTopMin { get; set; } = 10000f;
@@ -119,8 +123,6 @@ public partial class CloudField : Node, IWindSource
 
 	/// <summary>Rayon (m) autour de l'origine sans colonne locale au démarrage (zone d'apparition).</summary>
 	[Export] public float SpawnClearRadius { get; set; } = 1400f;
-	/// <summary>Distance (m) entre le point d'apparition et le bord de la base du cumulonimbus.</summary>
-	[Export] public float GiantSpawnClear { get; set; } = 4000f;
 
 	[ExportGroup("LOD du bruit")]
 	/// <summary>Distance (m) au-delà de laquelle le détail fin n'est plus calculé (estompé à partir du quart).</summary>
@@ -534,7 +536,7 @@ public partial class CloudField : Node, IWindSource
 
 	/// <summary>
 	/// Un seul cumulonimbus, au centre du domaine géant (qui ne se répète pas). Le domaine est placé
-	/// dans le monde pour que le bord de la base de l'orage soit à <see cref="GiantSpawnClear"/> du spawn.
+	/// dans le monde pour que ce centre soit en <see cref="GiantPosition"/>.
 	/// </summary>
 	private void PlaceGiantTowers(RandomNumberGenerator rng)
 	{
@@ -548,10 +550,8 @@ public partial class CloudField : Node, IWindSource
 			Kind = TowerKind.Cumulonimbus,
 		});
 
-		Vector2 dir = CumulonimbusDirection.LengthSquared() > 1e-6f ? CumulonimbusDirection.Normalized() : new Vector2(0f, -1f);
-		Vector2 center = dir * (r + GiantSpawnClear);
 		Giant.Repeat = false;
-		Giant.Origin = center - new Vector2(half, half);
+		Giant.Origin = GiantPosition - new Vector2(half, half);
 
 		// Satellites : amas de cumulus bourgeonnants (de 1,5 à 4,5 km de haut) au pied du cumulonimbus.
 		for (int s = 0; s < CumulonimbusSatellites; s++)
@@ -710,7 +710,7 @@ public partial class CloudField : Node, IWindSource
 					continue;
 				near.Add(ti);
 				if (t.Storm)
-					// Jupe limitée à ~1,25 R : la zone de départ (à R + GiantSpawnClear) garde sa mer de nuages normale.
+					// Jupe limitée à ~1,25 R : au-delà, la mer de nuages reste normale (zone de départ comprise).
 					skirt = Mathf.Max(skirt, 1f - SmoothStep(t.Radius * 0.85f, t.Radius * 1.25f, d));
 			}
 			if (near.Count == 0)

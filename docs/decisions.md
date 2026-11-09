@@ -163,3 +163,60 @@
   - transition de l'ombre de la Terre élargie : ±60 m → jusqu'à ±960 m ;
   - occlusion ambiante 5× plus progressive (150 m → 750 m).
 - Les nuages locaux sont inchangés. Les satellites du géant (même grille) sont adoucis aussi.
+
+## 2026-11-09 : ciel physique (Rayleigh, Mie, ozone)
+- `Shaders/Sky/sky_atmosphere.gdshader` remplace `sky_dusk.gdshader`, qui reste disponible pour revenir en arrière.
+- Origine : « Sky++ (sorta) » d'Ansol (godotshaders.com, CC0), basé sur « Rayleigh, Mie, Ozone based atmospheric scatter » (port de MinimalAtmosphere, de Fewes). Choix de l'utilisateur.
+- Structure reprise : la diffusion est calculée dans le cubemap de radiance, recalculé seulement quand le ciel change. La transmittance est calculée en quart de résolution et l'écran ne fait que lire. 60 FPS sur tous les plans de CloudShots.
+- Adaptations :
+  - soleil fourni par `Twilight` et non par `LIGHT0`, car `TwilightSun` est masqué dans l'ombre de la Terre ;
+  - soleil de diffusion fixe à +1° ;
+  - disque solaire à l'élévation apparente envoyée par `TwilightSun`, par paliers de 0,002 rad et seulement entre −0,02 et 0,05 rad. Chaque changement relance le cubemap ;
+  - pas de cumulus, de lunes ni d'arc-en-ciel ; étoiles procédurales.
+- Teintes violet et rose (demande de l'utilisateur) : `rayleigh_tint` (1,15 ; 0,92 ; 1,1), `mie_tint` rosé, ozone ×3. L'ozone absorbe surtout le vert, donc le zénith et les trajets rasants virent au violet.
+- Puis, à la demande de l'utilisateur (« adapte les couleurs à notre environnement, ciel plus clair ») : retour à la palette du jeu. Zénith bleu-lavande, rose près du soleil, horizon pêche pâle, accordés aux nuages lavande. Réglages :
+  - soleil de diffusion : 6° ;
+  - `exposure` : 16 ;
+  - ozone : 2,2 ;
+  - `rayleigh_tint` : (0,97 ; 0,97 ; 1,1) ;
+  - `mie_tint` : (1 ; 0,72 ; 0,88).
+- Les cirrus seront retravaillés plus tard (voir `docs/todo.md`).
+- Essai rejeté : soleil de diffusion à −1,5° avec l'ombre de la Terre. En diffusion simple, l'ombre sort presque noire et la ceinture brun-rouge. Le code de l'ombre est conservé : il n'agit que si le soleil passe sous l'horizon.
+- Les nuages ne sont pas modifiés (vérifié au pixel près). Ils paraissent plus blancs par contraste avec un ciel plus sombre.
+
+## 2026-11-09 : réglages du cumulonimbus dans l'inspecteur
+- Groupe « Cumulonimbus (orages) » du nœud `Clouds` (CloudField), en tête :
+  - `GiantEnabled` : interrupteur ;
+  - `GiantPosition` : centre en X, Z, en mètres monde ; par défaut (−8 700, −11 600), soit 14,5 km de l'origine, comme avant.
+- Ils remplacent `CumulonimbusDirection` et `GiantSpawnClear`. Avec ces deux-là, la position dépendait du rayon tiré au hasard.
+- Les deux réglages sont lus au calcul des nuages, au lancement. Géant désactivé : calcul de 4,6 → 2,2 s, et plus d'éclairs d'ambiance (`CongestusStrikeShare` = 0).
+
+## 2026-11-09 : ciel, côté opposé au soleil
+- Constat (utilisateur) : à l'opposé du soleil, le ciel était orangé, surtout à l'horizon. Il devait être mauve et s'estomper vers un bleu-gris, pour signifier que la nuit arrive.
+- Cause : la diffusion simple ne produit pas le bleu de l'ombre de la Terre (essai avec soleil couché rejeté plus haut). Les trajets rasants restent orangés tout autour.
+- Correction (`sky_atmosphere.gdshader`, passe du cubemap, donc sans coût par image) : côté opposé au soleil, la teinte est remplacée et la luminosité de la diffusion conservée.
+  - mauve `night_horizon_color` à l'horizon, bleu-gris `night_zenith_color` au-delà de `night_fade` (0,35 rad) ;
+  - luminosité ×`night_darken` (0,8) ;
+  - transition sur les côtés : `smoothstep(0.3, -0.7, dot(direction, azimut du soleil))`.
+- Les plans de CloudShots se placent par rapport au géant : ils ont légèrement bougé avec `GiantPosition` (valeur exacte au lieu d'un calcul dépendant du rayon tiré au hasard). Le rendu reste déterministe d'une exécution à l'autre.
+
+## 2026-11-09 : matériau du ciel réglable dans l'inspecteur
+- `Resources/Sky/sky_material.tres` (ShaderMaterial de `sky_atmosphere.gdshader`) porte les réglages du ciel, ainsi que les trois textures de bruit des cirrus (NoiseTexture2D + FastNoiseLite, auparavant générées en code).
+- Branché sur l'export `SkyMaterial` du nœud `Arena` (ArenaBuilder) dans `Main.tscn`. Si l'export est vide, le fichier par défaut est chargé.
+- Le code n'écrit dans le matériau que l'azimut et le disque solaire, et seulement en jeu. Dans l'éditeur, ces valeurs seraient enregistrées dans la ressource : vérifié, l'ouverture de `Main.tscn` dans l'éditeur ne la modifie pas.
+- Rendu identique au pixel près à la version précédente.
+
+## 2026-11-09 : ombre de la Terre physique dans le ciel (remplace la teinte « côté nuit »)
+- Rejeté par l'utilisateur : la teinte du côté nuit était une recoloration plaquée, indexée sur la direction horizontale. Elle créait une coupure en éventail au zénith, où cette direction n'est pas définie.
+- Remplacée par de la physique, dans la diffusion (`sky_atmosphere.gdshader`, passe du cubemap) :
+  - soleil sous l'horizon (`scatter_sun_elevation_deg` = −1,5°) : l'air dont le rayon vers le soleil traverse la planète n'est plus éclairé ;
+  - diffusion multiple approchée : ambiance `night_sky_color` × `night_sky_strength` × coefficient de Rayleigh, le long du regard, avec la transmittance. Dans l'ombre, il reste le bleu de la nuit ;
+  - Mie à deux lobes (`mie_back_weight` 0,3, `mie_back_anisotropy` −0,4) : la rétrodiffusion de la lumière rougie dessine la ceinture de Vénus ;
+  - 16 échantillons sur le trajet de la lumière, pour les rayons rasants ;
+  - `exposure` 22, `mie_strength` 1,5.
+- Résultat dos au soleil, d'après la photo de référence de l'utilisateur : bande bleu-gris basse, mauve au-dessus, bleu-violet en haut. Côté soleil : horizon rose-orangé.
+- Essai à −3° rejeté : l'air éclairé est au-dessus de ~20 km, trop raréfié, et la ceinture disparaît.
+
+## 2026-11-09 : la ressource du ciel est la source des réglages
+- Incident : après la modification des valeurs par défaut du shader, l'éditeur gardait les anciennes en cache. En enregistrant `sky_material.tres`, l'utilisateur les y a figées (soleil à 6°, exposition 16…) : le viewport et le jeu ne montraient plus le même ciel.
+- Règle : les réglages du ciel se font dans `Resources/Sky/sky_material.tres`, où toutes les valeurs sont écrites en clair. Ne plus retoucher les valeurs par défaut de `sky_atmosphere.gdshader` pour régler le ciel. Si on le fait quand même, recharger le projet dans l'éditeur avant d'enregistrer la ressource.

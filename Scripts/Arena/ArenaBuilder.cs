@@ -42,6 +42,15 @@ public partial class ArenaBuilder : Node3D
     /// <summary>Nombre de zones de rafale.</summary>
     [Export] public int WindZoneCount { get; set; } = 5;
 
+    /// <summary>
+    /// Matériau du ciel (couleurs, exposition, ozone, côté nuit, cirrus…), réglable dans l'inspecteur avec
+    /// aperçu dans l'éditeur. Vide : <c>res://Resources/Sky/sky_material.tres</c>. Le code n'y renseigne que
+    /// l'azimut du soleil et le disque solaire, et seulement en jeu (rien n'est écrit dans la ressource).
+    /// </summary>
+    [Export] public ShaderMaterial SkyMaterial { get; set; }
+
+    private const string DefaultSkyMaterialPath = "res://Resources/Sky/sky_material.tres";
+
     public override void _Ready() => Rebuild();
 
     /// <summary>Détruit et reconstruit tout le contenu généré.</summary>
@@ -67,7 +76,8 @@ public partial class ArenaBuilder : Node3D
 
     private void BuildEnvironment()
     {
-        var sky = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/Sky/sky_dusk.gdshader") };
+        // Ciel physique (Rayleigh, Mie, ozone). L'ancien ciel peint reste disponible : sky_dusk.gdshader.
+        ShaderMaterial sky = SkyMaterial ?? GD.Load<ShaderMaterial>(DefaultSkyMaterialPath);
 
         var environment = new Godot.Environment
         {
@@ -91,13 +101,15 @@ public partial class ArenaBuilder : Node3D
         _root.AddChild(new WorldEnvironment { Environment = environment });
 
         // Crépuscule (soleil couché, ombre de la Terre) : paramètres partagés via Twilight.
-        Vector2 az = Twilight.SunAzimuth.Normalized();
-        sky.SetShaderParameter("sun_azimuth", az);
-        sky.SetShaderParameter("sun_depression", Twilight.Depression);
-        sky.SetShaderParameter("earth_radius", Twilight.EarthRadius);
+        // En jeu seulement : dans l'éditeur, ces valeurs seraient enregistrées dans la ressource du ciel.
+        if (!Engine.IsEditorHint())
+        {
+            sky.SetShaderParameter("sun_azimuth", Twilight.SunAzimuth.Normalized());
+            sky.SetShaderParameter("sun_disc_elevation", Twilight.ApparentSunElevation(0f));
+        }
 
-        // Soleil rasant : n'éclaire que les véhicules au-dessus de l'ombre (voir TwilightSun).
-        _root.AddChild(new TwilightSun());
+        // Soleil rasant : n'éclaire que les véhicules au-dessus de l'ombre ; place le disque solaire du ciel.
+        _root.AddChild(new TwilightSun { SkyMaterial = sky });
     }
 
     private void BuildSea()

@@ -17,6 +17,15 @@ public partial class TwilightSun : DirectionalLight3D, IVehicleTracker
 
     public Vehicle Target { get; set; }
 
+    /// <summary>Matériau du ciel : reçoit l'élévation apparente du disque solaire (selon l'altitude de la caméra).</summary>
+    public ShaderMaterial SkyMaterial { get; set; }
+
+    // Changer un paramètre du ciel relance le calcul du cubemap : on n'envoie que par paliers, et seulement
+    // dans la plage où le disque bouge visiblement (autour du seuil de l'ombre).
+    private const float DiscStep = 0.002f;
+    private const float DiscMin = -0.02f, DiscMax = 0.05f;
+    private float _sentDiscElevation = float.NaN;
+
     public override void _Ready()
     {
         AddToGroup(IVehicleTracker.GroupName);
@@ -37,5 +46,19 @@ public partial class TwilightSun : DirectionalLight3D, IVehicleTracker
         float lit = IsInstanceValid(Target) ? Twilight.SunLit(Target.GlobalPosition) : 0f;
         LightEnergy = Energy * lit;
         Visible = lit > 0.001f;
+        UpdateSkyDisc();
+    }
+
+    private void UpdateSkyDisc()
+    {
+        Camera3D cam = GetViewport()?.GetCamera3D();
+        if (SkyMaterial == null || cam == null)
+            return;
+        float e = Mathf.Clamp(Twilight.ApparentSunElevation(cam.GlobalPosition.Y), DiscMin, DiscMax);
+        e = Mathf.Snapped(e, DiscStep);
+        if (e == _sentDiscElevation)
+            return;
+        _sentDiscElevation = e;
+        SkyMaterial.SetShaderParameter("sun_disc_elevation", e);
     }
 }

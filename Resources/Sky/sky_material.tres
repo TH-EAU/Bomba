@@ -1,0 +1,82 @@
+[gd_resource type="ShaderMaterial" load_steps=8 format=3 uid="uid://b1nfc0gesua6u"]
+
+[ext_resource type="Shader" uid="uid://exoop5xmhtdq" path="res://Shaders/Sky/sky_atmosphere.gdshader" id="1_sky"]
+
+[sub_resource type="FastNoiseLite" id="noise_distortion"]
+noise_type = 3
+seed = 23
+fractal_octaves = 3
+
+[sub_resource type="NoiseTexture2D" id="tex_distortion"]
+width = 256
+height = 256
+noise = SubResource("noise_distortion")
+seamless = true
+as_normal_map = true
+
+[sub_resource type="FastNoiseLite" id="noise_mask"]
+noise_type = 3
+seed = 37
+frequency = 0.008
+fractal_octaves = 2
+
+[sub_resource type="NoiseTexture2D" id="tex_mask"]
+width = 256
+height = 256
+noise = SubResource("noise_mask")
+seamless = true
+
+[sub_resource type="FastNoiseLite" id="noise_cirrus"]
+noise_type = 3
+seed = 11
+frequency = 0.012
+
+[sub_resource type="NoiseTexture2D" id="tex_cirrus"]
+noise = SubResource("noise_cirrus")
+seamless = true
+
+[resource]
+shader = ExtResource("1_sky")
+shader_parameter/use_debanding = true
+shader_parameter/atmosphere_sample_count = 48
+shader_parameter/optical_depth_samples = 16
+shader_parameter/elevation = 0.0
+shader_parameter/rayleigh_strength = 1.58800007543
+shader_parameter/mie_strength = 1.5
+shader_parameter/ozone_strength = 0.6370000302575
+shader_parameter/rayleigh_tint = Vector3(0.97, 0.97, 1.1)
+shader_parameter/mie_tint = Vector3(1, 0.72, 0.88)
+shader_parameter/mie_anisotropy_factor = 0.75
+shader_parameter/mie_back_anisotropy = -0.4
+shader_parameter/mie_back_weight = 0.3
+shader_parameter/atmosphere_density = 1.0
+shader_parameter/exposure = 51.0
+shader_parameter/color_under = Color(0.01, 0.015, 0.05, 1)
+shader_parameter/sun_azimuth = Vector2(0, -1)
+shader_parameter/scatter_sun_elevation_deg = 0.5
+shader_parameter/sun_light_color = Vector3(1, 0.92, 0.95)
+shader_parameter/sun_disc_elevation = -1.0
+shader_parameter/sun_disc_size = 0.0093
+shader_parameter/sun_disc_feather = 0.5
+shader_parameter/sundisc_intensity = 30.0
+shader_parameter/night_sky_color = Vector3(1.1, 0.85, 1.2)
+shader_parameter/night_sky_strength = 0.009
+shader_parameter/star_strength = 0.5
+shader_parameter/use_cirrus = true
+shader_parameter/cirrus_texture = SubResource("tex_cirrus")
+shader_parameter/cirrus_squish = Vector2(4, 1)
+shader_parameter/cirrus_scale = 0.05
+shader_parameter/cirrus_treshold = 0.786000037335
+shader_parameter/cirrus_feather = 0.302000014345
+shader_parameter/cirrus_offset = Vector2(0, 0)
+shader_parameter/cirrus_distortion_texture = SubResource("tex_distortion")
+shader_parameter/cirrus_distortion_scale = 0.08
+shader_parameter/cirrus_distortion_strength = 0.4
+shader_parameter/cirrus_distortion_offset = Vector2(0, 0)
+shader_parameter/cirrus_mask_texture = SubResource("tex_mask")
+shader_parameter/cirrus_mask_scale = 0.02
+shader_parameter/cirrus_mask_treshold = 0.5
+shader_parameter/cirrus_mask_feather = 0.25
+shader_parameter/cirrus_opacity = 0.35
+shader_parameter/cirrus_color = Color(0.78, 0.7, 0.98, 1)
+shader_parameter/cirrus_sun_color = Color(1, 0.6, 0.66, 1)
