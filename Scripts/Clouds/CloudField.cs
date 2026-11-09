@@ -818,8 +818,25 @@ public partial class CloudField : Node, IWindSource
 		{
 			float wl = 512f * noiseScale;
 			int warpPeriod = Mathf.RoundToInt(tile / wl);
-			float warp = CloudNoise.Perlin(x / wl, y / (400f * noiseScale), z / wl, warpPeriod, 0, warpPeriod, (uint)Seed + 55u)
-						 + 0.5f * CloudNoise.Perlin(x * 2f / wl, y / (200f * noiseScale), z * 2f / wl, warpPeriod * 2, 0, warpPeriod * 2, (uint)Seed + 56u);
+			float warp;
+			if (noiseScale > 1f)
+			{
+				// Géant (domaine sans répétition) : trois octaves à rapports de fréquence irrationnels et décalées.
+				// Deux octaves sur un même réseau (×2) dessinaient un quadrillage de bosses sur les grandes façades
+				// et des anneaux réguliers dans l'œil.
+				// Chaque octave est aussi tournée autour de la verticale (27°, 61°, 103°) : la grille carrée du Perlin,
+				// alignée sur les axes, dessinait sinon des carrés étagés sur l'enclume (losanges vus d'en haut).
+				// Les coordonnées sont décalées dans le positif (pas de repli de période).
+				(float x1, float z1) = Rot(x, z, 0.4712f, 0.8910f);
+				(float x2, float z2) = Rot(x, z, 0.8746f, 0.4848f);
+				(float x3, float z3) = Rot(x, z, 0.9744f, -0.2250f);
+				warp = CloudNoise.Perlin(x1 / wl + 20.31f, y / (430f * noiseScale) + 0.17f, z1 / wl + 20.73f, 64, 0, 64, (uint)Seed + 55u)
+					 + 0.55f * CloudNoise.Perlin(x2 * 2.13f / wl + 45.1f, y / (190f * noiseScale) + 2.3f, z2 * 2.13f / wl + 49.7f, 128, 0, 128, (uint)Seed + 56u)
+					 + 0.3f * CloudNoise.Perlin(x3 * 4.71f / wl + 91.9f, y / (97f * noiseScale) + 7.7f, z3 * 4.71f / wl + 93.3f, 256, 0, 256, (uint)Seed + 57u);
+			}
+			else
+				warp = CloudNoise.Perlin(x / wl, y / (400f * noiseScale), z / wl, warpPeriod, 0, warpPeriod, (uint)Seed + 55u)
+					 + 0.5f * CloudNoise.Perlin(x * 2f / wl, y / (200f * noiseScale), z * 2f / wl, warpPeriod * 2, 0, warpPeriod * 2, (uint)Seed + 56u);
 			foreach (int ti in near)
 			{
 				Tower t = towers[ti];
@@ -840,8 +857,22 @@ public partial class CloudField : Node, IWindSource
 		float el = 256f * noiseScale;
 		int worleyPeriod = Mathf.RoundToInt(tile / el);
 		int perlinPeriod = Mathf.RoundToInt(tile / (el * 2f));
-		float worley = CloudNoise.WorleyFbm(x / el, y / el, z / el, worleyPeriod, 0, worleyPeriod, 3, (uint)Seed + 11u);
-		float perlin = CloudNoise.PerlinFbm(x / (el * 2f), y / (el * 2f), z / (el * 2f), perlinPeriod, 0, perlinPeriod, 3, (uint)Seed + 23u);
+		float worley, perlin;
+		if (noiseScale > 1f)
+		{
+			// Géant : érosion tournée hors des axes (et inclinée). Sur l'enclume presque plate, la hauteur du dessus
+			// suit ce bruit : aligné sur les axes, il dessinait des marches carrées (losanges vus d'en haut).
+			(float ex, float ez) = Rot(x, z, 0.6157f, 0.7880f);   // 38°
+			float ey = y + 0.3f * ez;
+			worley = CloudNoise.WorleyFbm(ex / el + 40.3f, ey / el + 3.1f, ez / el + 40.7f, 128, 0, 128, 3, (uint)Seed + 11u);
+			(float px, float pz) = Rot(x, z, -0.4226f, 0.9063f);  // -25°
+			perlin = CloudNoise.PerlinFbm(px / (el * 2f) + 20.2f, (y - 0.25f * px) / (el * 2f) + 1.7f, pz / (el * 2f) + 20.9f, 64, 0, 64, 3, (uint)Seed + 23u);
+		}
+		else
+		{
+			worley = CloudNoise.WorleyFbm(x / el, y / el, z / el, worleyPeriod, 0, worleyPeriod, 3, (uint)Seed + 11u);
+			perlin = CloudNoise.PerlinFbm(x / (el * 2f), y / (el * 2f), z / (el * 2f), perlinPeriod, 0, perlinPeriod, 3, (uint)Seed + 23u);
+		}
 		float n = 0.65f * worley + 0.35f * perlin;
 		float lo = (1f - n) * Erosion;
 		float density = Mathf.Clamp((shape - lo) / Mathf.Max(1f - lo, 0.05f), 0f, 1f);
@@ -909,6 +940,9 @@ public partial class CloudField : Node, IWindSource
 	}
 
 	// ------------------------------------------------------------------ Utilitaires
+
+	/// <summary>Rotation de (x, z) autour de la verticale (sinus, cosinus de l'angle).</summary>
+	private static (float, float) Rot(float x, float z, float s, float c) => (c * x - s * z, s * x + c * z);
 
 	private static float WrappedDistance(float x0, float z0, float x1, float z1, float tile)
 	{

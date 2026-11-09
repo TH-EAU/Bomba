@@ -93,6 +93,10 @@ public partial class CloudShots : Node
         // Œil : vue plongeante sur le cumulonimbus, la colonne calme au centre.
         Vector3 eyeTop = storm.Position with { Y = storm.Top + 2500f };
         _shots.Add(("œil", eyeTop + new Vector3(storm.Radius * 0.08f, 0f, storm.Radius * 0.08f), storm.Position with { Y = 0f }, false));
+        // Paroi : la façade du cumulonimbus de près, à mi-hauteur (détail et répétition du bruit).
+        Vector3 wallTarget = storm.Position with { Y = 2500f };
+        Vector3 sunSide = new Vector3(Bomba.Core.Twilight.SunAzimuth.X, 0f, Bomba.Core.Twilight.SunAzimuth.Y).Normalized();
+        _shots.Add(("paroi", wallTarget + sunSide * storm.Radius * 1.0f, wallTarget, false));
         // Bord : caméra au ras du flanc d'un cumulus, regard tangent à travers son bord vers l'horizon
         // (les nuages lointains doivent rester visibles à travers le bord fin).
         Vector3 side = new Vector3(1f, 0f, 0.35f).Normalized();

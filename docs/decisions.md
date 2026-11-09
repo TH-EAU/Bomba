@@ -310,3 +310,20 @@
   - l'œil perce aussi la nappe soulevée au pied de l'orage (grille géante) ;
   - et la nappe locale, qui se répète : masquée à l'échantillonnage, à la position réelle de l'œil (shader `sample_cloud` et `CloudField.Sample`). Le SDF n'est pas modifié : retirer du nuage ne fait qu'allonger la distance, le saut reste sûr.
   - Vérification : densité nulle au centre et à 1 km, de 350 m à 10 km ; vue plongeante (plan « œil » à la verticale) : puits jusqu'à la mer.
+
+## 2026-11-09 : motif répétitif sur les façades et dans l'œil du géant
+- Diagnostic (couverture brute, `--cloud-debug=5`, et essais par élimination) :
+  - **cause principale** : le bruit de déformation du géant (`warp`, Perlin 2 octaves sur un même réseau ×2, environ 3 km × 2,4 km) dessinait un quadrillage de bosses sur les façades, et des anneaux réguliers dans l'œil, dont le rayon pulsait avec la hauteur ;
+  - **causes secondaires** : la répétition des textures de bruit (900 m et 2,7 km) sur les façades, et la grille verticale grossière.
+  - **écarté** : le pas de rendu (anneaux identiques avec des pas 5 fois plus fins).
+- Corrections :
+  - `CloudField` : pour le géant seulement (domaine sans répétition), trois octaves à rapports irrationnels (×1, ×2,13, ×4,71) et décalées ; les nuages locaux, qui doivent se répéter sans raccord, sont inchangés ;
+  - `clouds_march.glsl` : déformation à très grande échelle (`giant_warp`, environ 15 km) et rotation hors des axes (`GIANT_ROT`) pour le bruit de forme et de détail du géant ;
+- La silhouette du géant change un peu : plus déchiquetée et naturelle.
+- Suite (demande de l'utilisateur : « trop de détail sur trop de surface ») :
+  - **masque de détail** du géant (`giant_detail_mask`, un bruit de valeur quintique tourné, échelle 4 km, calculé une fois par échantillon et réutilisé par le détail via `g_mask`) : la passe fine et l'érosion de détail varient de 12 à 100 %. Des zones lisses alternent avec des zones boursouflées. Plan CloudShots « paroi » (façade côté soleil, à 2 500 m) ;
+  - `giant_warp` : bruit de valeur vectoriel (`value_noise3v`, 8 hachages) ; une texture 64³ étirée sur 15 km donnait des facettes (ombrage anguleux) ;
+  - la marche vers le soleil n'utilise ni déformation ni masque (`g_light`) : la première version, avec ces bruits recalculés partout, faisait tomber les FPS à 15–43 ;
+  - érosion CPU du géant tournée et inclinée hors des axes.
+- Grille verticale du géant laissée à 80 étages (exposant 2,2). L'essai à 128 étages faisait apparaître des marches carrées alignées sur les axes sur l'enclume. Ont été écartés comme cause : la marge du SDF, l'azimut du soleil, la déformation et le masque du shader, l'érosion et le bruit de déformation CPU. La cause exacte n'est pas trouvée.
+- Coût final : calcul au chargement inchangé (4,4 s) ; 52 à 60 FPS sur tous les plans de CloudShots.

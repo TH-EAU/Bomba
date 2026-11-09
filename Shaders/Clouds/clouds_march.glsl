@@ -209,12 +209,70 @@ float shape_at(vec3 pos, float cov, float period) {
 
 // Passe 1 : forme. Grille geante (cellules ~190 m) : une passe grossiere (x3) efface les cellules et
 // donne les grands bourgeons, puis la meme passe que les nuages locaux ajoute leur grain (a demi-dose).
+float hash13(vec3 p3) {
+    p3 = fract(p3 * 0.1031);
+    p3 += dot(p3, p3.zyx + 31.32);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+// Bruit de valeur 3D (0..1), plage maitrisee (la texture de forme varie trop peu a cette echelle).
+float value_noise3(vec3 x) {
+    vec3 i = floor(x);
+    vec3 f = fract(x);
+    f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);   // quintique : pas de cassure de pente aux noeuds
+    float a = mix(hash13(i), hash13(i + vec3(1, 0, 0)), f.x);
+    float b = mix(hash13(i + vec3(0, 1, 0)), hash13(i + vec3(1, 1, 0)), f.x);
+    float c = mix(hash13(i + vec3(0, 0, 1)), hash13(i + vec3(1, 0, 1)), f.x);
+    float d = mix(hash13(i + vec3(0, 1, 1)), hash13(i + vec3(1, 1, 1)), f.x);
+    return mix(mix(a, b, f.y), mix(c, d, f.y), f.z);
+}
+
+vec3 hash33(vec3 p3) {
+    p3 = fract(p3 * vec3(0.1031, 0.1030, 0.0973));
+    p3 += dot(p3, p3.yxz + 33.33);
+    return fract((p3.xxy + p3.yxx) * p3.zyx);
+}
+
+// Bruit de valeur vectoriel (trois composantes, 8 hachages) : deformation lisse et peu couteuse.
+vec3 value_noise3v(vec3 x) {
+    vec3 i = floor(x);
+    vec3 f = fract(x);
+    f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+    vec3 a = mix(hash33(i), hash33(i + vec3(1, 0, 0)), f.x);
+    vec3 b = mix(hash33(i + vec3(0, 1, 0)), hash33(i + vec3(1, 1, 0)), f.x);
+    vec3 c = mix(hash33(i + vec3(0, 0, 1)), hash33(i + vec3(1, 0, 1)), f.x);
+    vec3 d = mix(hash33(i + vec3(0, 1, 1)), hash33(i + vec3(1, 1, 1)), f.x);
+    return mix(mix(a, b, f.y), mix(c, d, f.y), f.z);
+}
+
+// Grandes facades du geant : les textures de bruit (periodes 900 m et 2,7 km) s y repetaient en motif regulier.
+// On deforme les coordonnees a tres grande echelle (~15 km, sans rapport avec la periode), puis la passe fine est
+// tournee hors des axes (Ry 37 deg, Rx 21 deg) : deux tuiles voisines ne sont plus jamais identiques.
+const mat3 GIANT_ROT = mat3(0.7986, 0.0, -0.6018,  0.2157, 0.9336, 0.2862,  0.5618, -0.3584, 0.7456);
+vec3 giant_warp(vec3 pos) {
+    // Bruit lisse (une texture etiree sur 15 km donnait des facettes, ombrage anguleux).
+    vec3 w = value_noise3v(pos / (p.volume.w * 13.7)) - 0.5;
+    return pos + w * p.volume.w * 2.0;
+}
+
+// Sur les grandes facades, le detail uniforme fait reperer le bruit : sa force varie par grandes taches (3 a 6 km),
+// des zones presque lisses alternent avec des zones boursouflees.
+// Masque calcule une fois par echantillon (shape_density) et reutilise par detail_density (g_mask).
+float g_mask = 1.0;
+bool g_light = false;   // marche vers le soleil : ni deformation ni masque (invisible a cette echelle)
+float giant_detail_mask(vec3 pos) {
+    float n = value_noise3((GIANT_ROT * pos) / 4000.0);
+    return mix(0.12, 1.0, smoothstep(0.4, 0.62, n));
+}
+
 float shape_density(vec3 pos, float cov) {
     float fine = shape_at(pos, cov, p.volume.w);
     if (g_giant < 0.01)
         return fine;
-    float coarse = shape_at(pos, cov, p.volume.w * 3.0);
-    float giant = mix(coarse, shape_at(pos, coarse, p.volume.w), 0.5);
+    vec3 q = g_light ? pos : giant_warp(pos);
+    g_mask = g_light ? 0.6 : giant_detail_mask(pos);
+    float coarse = shape_at(q, cov, p.volume.w * 3.0);
+    float giant = mix(coarse, shape_at(GIANT_ROT * q, coarse, p.volume.w), 0.5 * g_mask);
     return mix(fine, giant, g_giant);
 }
 
@@ -222,12 +280,25 @@ float shape_density(vec3 pos, float cov) {
 float detail_density(vec3 pos, float shape) {
     if (shape <= 0.0)
         return 0.0;
-    vec3 dn = textureLod(detail_tex, pos / (detail_period() * 0.22) + detail_drift() * 3.0, 0.0).rgb;
+    vec3 dscale = vec3(1.0 / (detail_period() * 0.22));
+    vec3 doff = detail_drift() * 3.0;
+    vec3 dn = g_giant < 0.99 ? textureLod(detail_tex, pos * dscale + doff, 0.0).rgb : vec3(0.0);
+    if (g_giant > 0.01)
+        dn = mix(dn, textureLod(detail_tex, (GIANT_ROT * giant_warp(pos)) * dscale + doff, 0.0).rgb, g_giant);
     float dfbm = smoothstep(0.45, 0.97, dn.r * 0.625 + dn.g * 0.25 + dn.b * 0.125);
     float bottom = 1.0 - smoothstep(p.volume.y + 60.0, p.volume.y + 170.0, pos.y);
     float modifier = mix(dfbm, 1.0 - dfbm, bottom);
     float erode = modifier * 0.6 * p.ambient_bottom_detail.w;
+    if (g_giant > 0.01)
+        erode *= mix(1.0, g_mask, g_giant);
     return clamp(remap(shape, erode, 1.0, 0.0, 1.0), 0.0, 1.0);
+}
+
+float light_shape(vec3 q, float cov) {
+    g_light = true;
+    float d = shape_density(q, cov);
+    g_light = false;
+    return d;
 }
 
 // Epaisseur optique vers le soleil (pas croissants, forme Perlin-Worley sans le detail fin).
@@ -241,7 +312,7 @@ float light_optical_depth(vec3 pos, bool use_shape) {
         vec3 q = pos + L * t;
         vec4 c = sample_cloud(q);
         if (c.g > 0.0) {
-            float d = sharpen(use_shape && i < 4 ? shape_density(q, c.g) : c.g);
+            float d = sharpen(use_shape && i < 4 ? light_shape(q, c.g) : c.g);
             od += d * (1.0 + c.b * 2.0) * step_len;
         }
         step_len *= 2.1;
