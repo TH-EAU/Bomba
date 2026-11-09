@@ -126,3 +126,40 @@
   - côté opposé : bleu nuit, plus clair vers l'horizon.
   - La lueur de couchant est réduite au ras de l'horizon ; la ceinture de Vénus est atténuée à 15 %.
 - Les projecteurs n'étaient pas en cause : un test sans eux donne la même colonne.
+
+## 2026-11-09 : gouttes sur l'écran guidées par une carte de rails
+- `Resources/Textures/waterDropMap.jpg` (fournie par l'utilisateur) est préparée une fois au chargement par `Scripts/Effects/DropRailMap.cs`. Chaque rail (composante connexe) reçoit une phase, une vitesse et un seuil de présence, et le masque flouté donne le profil bombé. Raison : avec des secteurs angulaires, chaque rail était découpé en éclats, et le masque binaire donnait des normales en blocs.
+- Les perles gonflent sur les parties épaisses et glissent vers l'extérieur par à-coups. Normales par différences finies, réfraction inversée et floue, bord sombre, reflet.
+- Seul le nitro fait glisser les gouttes (`NitroFlow`) et vide les rails (`ClearRate`). Sans nitro, elles restent quasi immobiles (`BaseFlow` = 0,02) et sèchent sur place hors des nuages. Choix de l'utilisateur : les gouttes restent statiques tant qu'il n'utilise pas le nitro.
+- Renouvellement en mouvement (`RenewRate`, selon la vitesse) : chaque perle s'estompe, puis réapparaît ailleurs sur son rail.
+- Réfraction inversée : décalage vers le cœur, jusqu'à `lens_extent_px` au bord. La goutte montre la scène à l'envers. Essais rejetés par l'utilisateur : des gouttes en paraboloïde et des formes en champ de distance. Leurs formes ne respectaient plus la carte ; la forme des perles reste celle de la version d'origine.
+
+## 2026-11-09 : éclairs d'ambiance dans les congestus
+- Constat : l'orage (canal `Storm`) n'existe que dans le cumulonimbus de la grille géante, désactivée (`GiantEnabled = false`). Aucun éclair ne partait donc en jeu, seulement dans CloudShots, qui les déclenche directement.
+- Choix : 70 % des éclairs d'ambiance (`CloudEffects.CongestusStrikeShare`) partent du cœur d'un congestus local proche (`CloudField.TryRandomLightningPoint`). C'est purement décoratif : le canal d'orage n'est pas modifié, donc ni assombrissement des congestus ni foudre sur le joueur.
+
+## 2026-11-09 : retour du cumulonimbus, au même grain que les nuages locaux
+- `GiantEnabled = true` par défaut : le cumulonimbus est rétabli, à la demande de l'utilisateur. Il redevient la source des éclairs. `CongestusStrikeShare` passe à 0 : l'utilisateur ne veut pas de congestus orageux.
+- Problème : le géant avait un tout autre grain que le reste. Ses cellules faisaient 384 m, contre 64 m pour la grille locale, et son bruit de forme était ×6, d'où des bourgeons d'environ 330 m contre 55 m.
+- Correction :
+  - grille géante passée de 128×64×128 à 256×80×256, soit des cellules de 192 m ;
+  - dans `clouds_march.glsl`, une passe grossière ×3 (qui efface les cellules), puis la passe locale ×1 à demi-dose ;
+  - détail fin à l'échelle locale partout.
+- Coût : calcul au chargement de 2,7 à 4,5 s, texture d'environ 42 Mo ; 59–60 FPS sur tous les plans de CloudShots (GTX 1050 Ti).
+- Éclairs d'ambiance : `CloudField.TryRandomLightningPoint` vise directement le cœur du cumulonimbus. La recherche au hasard n'aboutissait qu'environ une fois sur huit ; on obtient maintenant environ un éclair toutes les 4 à 8 s quand l'orage est à moins de 25 km.
+- Couleur : la teinte d'orage est neutralisée dans le rendu (`storm = c.b * 0.0` dans `clouds_march.glsl`). Le cumulonimbus garde la couleur des autres nuages, à la demande de l'utilisateur. Le canal d'orage reste utilisé par le gameplay et les éclairs.
+
+## 2026-11-09 : nuages lointains visibles à travers le bord d'un nuage proche
+- Cause : un rayon qui longe la frange d'un nuage proche y fait des centaines de mètres à pas fin (environ 6 m), dans une densité nulle (zone érodée). Il épuise ses 96 pas avant d'atteindre les nuages lointains, qui disparaissent.
+- Correction (`clouds_march.glsl`) :
+  - le pas s'allonge sur une suite d'échantillons vides (densité ≤ 0,005), jusqu'à ×4 ;
+  - à la rentrée dans la densité, le rayon recule et reprend à pas fin, ce qui évite les stries en veinage de bois ;
+  - l'intégration utilise le pas réel.
+- Vérification : nouveau plan « bord » dans `CloudShots` (caméra au ras du flanc d'un congestus, regard tangent). Avant, une bande unie sans nuages près du bord ; après, la nappe lointaine est visible jusqu'à la frange. 59–61 FPS sur tous les plans.
+
+## 2026-11-09 : dégradé plus doux sur le cumulonimbus
+- Demande : adoucir le passage du blanc externe au gris interne sur le géant, sans toucher aux autres nuages.
+- Dans `clouds_march.glsl`, pondéré par la part de la grille géante dans l'échantillon (`gg`) :
+  - transition de l'ombre de la Terre élargie : ±60 m → jusqu'à ±960 m ;
+  - occlusion ambiante 5× plus progressive (150 m → 750 m).
+- Les nuages locaux sont inchangés. Les satellites du géant (même grille) sont adoucis aussi.

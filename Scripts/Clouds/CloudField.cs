@@ -46,7 +46,7 @@ public partial class CloudField : Node, IWindSource
 	public static CloudField Instance { get; private set; }
 
 	public const int SizeX = 192, SizeY = 96, SizeZ = 192;
-	public const int GiantSizeX = 128, GiantSizeY = 64, GiantSizeZ = 128;
+	public const int GiantSizeX = 256, GiantSizeY = 80, GiantSizeZ = 256;
 
 	/// <summary>Émis quand le calcul est terminé (les données et les textures sont prêtes).</summary>
 	[Signal] public delegate void BakedEventHandler();
@@ -66,7 +66,7 @@ public partial class CloudField : Node, IWindSource
 
 	[ExportGroup("Volume géant")]
 	/// <summary>Active le cumulonimbus géant (grille géante). Désactivé : aucun calcul ni rendu de cette grille.</summary>
-	[Export] public bool GiantEnabled { get; set; }
+	[Export] public bool GiantEnabled { get; set; } = true;
 	/// <summary>Période de la grille géante = TileSize × ce facteur (≈ 49 km : un cumulonimbus par période).</summary>
 	[Export] public int GiantTileFactor { get; set; } = 4;
 	[Export] public float GiantMaxAltitude { get; set; } = 14000f;
@@ -431,6 +431,45 @@ public partial class CloudField : Node, IWindSource
 		LightningPosition = worldPos;
 		LightningTime = Time.GetTicksMsec() / 1000.0;
 		EmitSignal(SignalName.LightningTriggered, worldPos, strikeTarget, hasTarget);
+	}
+
+	/// <summary>
+	/// Point d'éclair décoratif dans un cœur orageux proche de <paramref name="around"/> : le cumulonimbus et, si
+	/// <paramref name="congestus"/>, les congestus locaux (copie la plus proche, dérive comprise). Viser les tours
+	/// plutôt que chercher au hasard : un éclair à chaque tentative dès qu'un orage est à portée.
+	/// </summary>
+	public bool TryRandomLightningPoint(Vector3 around, float radius, RandomNumberGenerator rng, bool congestus, out Vector3 point)
+	{
+		point = Vector3.Zero;
+		var candidates = new List<Vector3>();
+		// Cumulonimbus (grille géante, un seul exemplaire) : cœur orageux.
+		foreach (Tower t in _giantTowers)
+		{
+			if (!t.Storm)
+				continue;
+			float gx = Giant.Origin.X + t.X + Offset.X, gz = Giant.Origin.Y + t.Z + Offset.Y;
+			if ((gx - around.X) * (gx - around.X) + (gz - around.Z) * (gz - around.Z) > radius * radius)
+				continue;
+			Vector2 j = Vector2.Right.Rotated(rng.Randf() * Mathf.Tau) * rng.RandfRange(0f, 0.3f * t.Radius);
+			candidates.Add(new Vector3(gx + j.X, Mathf.Lerp(LayerBottom, t.Top, rng.RandfRange(0.15f, 0.7f)), gz + j.Y));
+		}
+		foreach (Tower t in _localTowers)
+		{
+			if (!congestus || t.Kind != TowerKind.Congestus)
+				continue;
+			float dx = t.X + Offset.X - around.X, dz = t.Z + Offset.Y - around.Z;
+			dx -= Mathf.Round(dx / TileSize) * TileSize;
+			dz -= Mathf.Round(dz / TileSize) * TileSize;
+			if (dx * dx + dz * dz > radius * radius)
+				continue;
+			Vector2 jitter = Vector2.Right.Rotated(rng.Randf() * Mathf.Tau) * rng.RandfRange(0f, 0.3f * t.Radius);
+			float y = Mathf.Lerp(LayerBottom, t.Top, rng.RandfRange(0.3f, 0.7f));
+			candidates.Add(new Vector3(around.X + dx + jitter.X, y, around.Z + dz + jitter.Y));
+		}
+		if (candidates.Count == 0)
+			return false;
+		point = candidates[rng.RandiRange(0, candidates.Count - 1)];
+		return true;
 	}
 
 	// ------------------------------------------------------------------ Calcul

@@ -6,9 +6,11 @@ using Godot;
 namespace Bomba.Effects;
 
 /// <summary>
-/// Gouttes d'eau sur l'écran dans les nuages. Le mouillage suit la densité du nuage sous le véhicule
-/// (<see cref="CloudEffects.Density"/>) ; la vitesse les chasse vers les bords. Le rendu est fait par
-/// <c>Shaders/Effects/screen_droplets.gdshader</c>. Le nœud est sous le HUD (couche 0).
+/// Gouttes d'eau sur l'écran dans les nuages, pilotées par une carte de rails (<see cref="DropMap"/>).
+/// Le mouillage suit la densité du nuage sous le véhicule (<see cref="CloudEffects.Density"/>) ; les gouttes
+/// restent quasi immobiles sur leurs rails ; seul le nitro les fait glisser vers l'extérieur,
+/// les étire et vide les rails. Rendu : <c>Shaders/Effects/screen_droplets.gdshader</c>.
+/// Le nœud est sous le HUD (couche 0).
 /// </summary>
 public partial class ScreenDroplets : CanvasLayer, IVehicleTracker
 {
@@ -18,24 +20,37 @@ public partial class ScreenDroplets : CanvasLayer, IVehicleTracker
     /// <summary>Couverture perdue par seconde hors nuage.</summary>
     [Export] public float DryRate { get; set; } = 0.12f;
 
-    [ExportGroup("Flux d'air")]
-    /// <summary>Vitesse (m/s) à partir de laquelle le flux commence à chasser les gouttes.</summary>
-    [Export] public float ClearSpeedStart { get; set; } = 25f;
-    /// <summary>Vitesse (m/s) à partir de laquelle le flux chasse à plein régime.</summary>
-    [Export] public float ClearSpeedFull { get; set; } = 70f;
-    /// <summary>Couverture retirée par seconde à vitesse maximale.</summary>
+    [ExportGroup("Écoulement")]
+    /// <summary>Glisse hors nitro : les gouttes restent quasi immobiles, à peine une reptation.</summary>
+    [Export] public float BaseFlow { get; set; } = 0.02f;
+    /// <summary>Glisse ajoutée pendant le nitro.</summary>
+    [Export] public float NitroFlow { get; set; } = 2.4f;
+    /// <summary>Couverture retirée par seconde pendant le nitro.</summary>
     [Export] public float ClearRate { get; set; } = 0.8f;
-    /// <summary>Multiplicateur du flux pendant le nitro.</summary>
-    [Export] public float NitroClearBoost { get; set; } = 2f;
+
+    [ExportGroup("Renouvellement")]
+    /// <summary>Cycles de vie par seconde à pleine vitesse : une goutte vit environ 1 / RenewRate s.</summary>
+    [Export] public float RenewRate { get; set; } = 0.3f;
+    /// <summary>Vitesse (m/s) sous laquelle les gouttes ne se renouvellent plus.</summary>
+    [Export] public float RenewSpeedStart { get; set; } = 5f;
+    /// <summary>Vitesse (m/s) de renouvellement maximal.</summary>
+    [Export] public float RenewSpeedFull { get; set; } = 40f;
+
+    [ExportGroup("Carte des rails")]
+    /// <summary>Carte des rails (blanc = chemin des gouttes, épais = perles). Vide : carte par défaut.</summary>
+    [Export] public Texture2D DropMap { get; set; }
 
     [ExportGroup("Debug")]
     /// <summary>Si ≥ 0, remplace la couverture calculée (tests). Négatif : désactivé.</summary>
     [Export] public float ForceCoverage { get; set; } = -1f;
+    /// <summary>Si ≥ 0, remplace la poussée calculée (tests d'écoulement).</summary>
+    [Export] public float ForceStreak { get; set; } = -1f;
 
     /// <summary>Véhicule suivi.</summary>
     public Vehicle Target { get; set; }
 
     private const string ShaderPath = "res://Shaders/Effects/screen_droplets.gdshader";
+    private const string DefaultMapPath = "res://Resources/Textures/waterDropMap.jpg";
     private const float InCloudDensity = 0.02f;
     private const float VisibleCoverage = 0.001f;
 
@@ -45,6 +60,7 @@ public partial class ScreenDroplets : CanvasLayer, IVehicleTracker
     private float _coverage;
     private float _streak;
     private float _flowTime;
+    private float _renewTime;
 
     public override void _Ready()
     {
@@ -52,6 +68,9 @@ public partial class ScreenDroplets : CanvasLayer, IVehicleTracker
         AddToGroup(IVehicleTracker.GroupName);
 
         _material = new ShaderMaterial { Shader = GD.Load<Shader>(ShaderPath) };
+        ImageTexture rails = DropRailMap.Get(DropMap ?? GD.Load<Texture2D>(DefaultMapPath));
+        _material.SetShaderParameter("rail_map", rails);
+        _material.SetShaderParameter("rail_ids", rails);
         _rect = new ColorRect { MouseFilter = Control.MouseFilterEnum.Ignore, Material = _material, Visible = false };
         _rect.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         AddChild(_rect);
@@ -61,26 +80,33 @@ public partial class ScreenDroplets : CanvasLayer, IVehicleTracker
     {
         float dt = (float)delta;
         float density = GetDensity();
-        bool hasTarget = IsInstanceValid(Target);
-        float speed = hasTarget ? Target.Speed : 0f;
-        bool nitro = hasTarget && Target.NitroActive;
+        bool nitro = IsInstanceValid(Target) && Target.NitroActive;
 
-        float s = Mathf.SmoothStep(ClearSpeedStart, ClearSpeedFull, speed);
+        // Seul le nitro chasse les gouttes ; sinon elles restent en place et sèchent hors nuage.
+        float push = nitro ? 1f : 0f;
+        if (ForceStreak >= 0f)
+            push = ForceStreak;
 
         _coverage += density * WetRate * dt;
         if (density < InCloudDensity)
             _coverage -= DryRate * dt;
-        _coverage -= s * ClearRate * dt * (nitro ? NitroClearBoost : 1f);
+        _coverage -= push * ClearRate * dt;
         _coverage = Mathf.Clamp(_coverage, 0f, 1f);
 
-        _streak = Mathf.Lerp(_streak, s, 1f - Mathf.Exp(-4f * dt));
-        _flowTime += dt * (0.2f + 2.5f * _streak);
+        // Le nitro fait filer et étire les gouttes.
+        _streak = Mathf.Lerp(_streak, Mathf.Clamp(push, 0f, 1f), 1f - Mathf.Exp(-4f * dt));
+        _flowTime += dt * (BaseFlow + NitroFlow * _streak);
+
+        // En mouvement, de nouvelles gouttes frappent la vitre pendant que d'autres disparaissent.
+        float speed = IsInstanceValid(Target) ? Target.Speed : 0f;
+        _renewTime += dt * RenewRate * Mathf.SmoothStep(RenewSpeedStart, RenewSpeedFull, speed);
 
         float shown = ForceCoverage >= 0f ? ForceCoverage : _coverage;
         _rect.Visible = shown >= VisibleCoverage;
         _material.SetShaderParameter("coverage", shown);
         _material.SetShaderParameter("streak", _streak);
         _material.SetShaderParameter("flow_time", _flowTime);
+        _material.SetShaderParameter("renew_time", _renewTime);
     }
 
     private float GetDensity()

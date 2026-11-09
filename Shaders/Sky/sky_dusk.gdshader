@@ -6,10 +6,10 @@ shader_type sky;
 uniform vec4 color_under : source_color = vec4(0.01, 0.015, 0.05, 1.0);
 // Ciel éclairé (côté soleil) : bleu clair pâle à l'horizon, bleu profond au zénith.
 uniform vec4 day_horizon : source_color = vec4(0.72, 0.84, 0.97, 1.0);
-uniform vec4 day_zenith : source_color = vec4(0.2, 0.44, 0.86, 1.0);
+uniform vec4 day_zenith : source_color = vec4(0.3, 0.44, 0.62, 1.0);
 // Ciel dans l'ombre (côté opposé) : bleu nuit.
-uniform vec4 night_horizon : source_color = vec4(0.07, 0.13, 0.3, 1.0);
-uniform vec4 night_zenith : source_color = vec4(0.01, 0.03, 0.12, 1.0);
+uniform vec4 night_horizon : source_color = vec4(0.21, 0.33, 0.43, 1.0);
+uniform vec4 night_zenith : source_color = vec4(0.31, 0.43, 0.62, 1.0);
 
 uniform vec4 cirrus_light_blue : source_color = vec4(0.55, 0.72, 0.95, 1.0);
 uniform vec4 cirrus_lavender : source_color = vec4(0.75, 0.68, 0.96, 1.0);
@@ -18,7 +18,7 @@ uniform float cirrus_opacity : hint_range(0.0, 1.0) = 0.7;
 uniform float cirrus_threshold : hint_range(0.0, 1.0) = 0.52;
 uniform float cirrus_softness = 0.012;
 uniform float cirrus_angle = 0.45;
-uniform float cirrus_scale = 1.0;
+uniform float cirrus_scale = 0.0;
 
 uniform vec4 sun_halo_color : source_color = vec4(1.0, 0.66, 0.5, 1.0);
 uniform vec4 sun_disc_color : source_color = vec4(1.0, 0.86, 0.78, 1.0);
@@ -32,9 +32,9 @@ uniform vec2 sun_azimuth = vec2(0.0, -1.0);
 uniform float sun_depression = 0.021;
 uniform float earth_radius = 5.9e6;
 // Hauteur angulaire (rad) du haut de l ombre de la Terre côté opposé au soleil.
-uniform float shadow_top = 0.09;
+uniform float shadow_top = 0.12;
 uniform vec4 glow_color : source_color = vec4(1.0, 0.62, 0.52, 1.0);
-uniform vec4 belt_color : source_color = vec4(0.96, 0.68, 0.8, 1.0);
+uniform vec4 belt_color : source_color = vec4(0.16, 0.08, 0.2, 1.0);
 uniform vec4 earth_shadow_color : source_color = vec4(0.3, 0.36, 0.62, 1.0);
 
 float hash12(vec2 p) {

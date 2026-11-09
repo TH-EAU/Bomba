@@ -115,21 +115,32 @@ float sharpen(float d) {
 }
 
 // Part de la grille geante dans le dernier echantillon (mise a jour par sample_cloud).
-// Le bruit de detail suit la grille du nuage : formes grossieres (x6) pour le cumulonimbus et ses
-// satellites a toute altitude, formes fines pour la nappe et les cumulus locaux. Pas de cisaillement vertical.
+// Le bruit de detail a la meme echelle partout (p.volume.w) : le cumulonimbus a le meme grain que
+// la nappe et les cumulus locaux. Pas de cisaillement vertical.
 float detail_period() {
-    return p.volume.w * mix(1.0, 6.0, g_giant);
+    return p.volume.w;
 }
 
-// Passe 1 : forme Perlin-Worley (bourgeons ~ periode/4). La couverture precalculee decoupe la forme.
-float shape_density(vec3 pos, float cov) {
-    vec4 sn = textureLod(shape_tex, pos / detail_period() + noise_drift(), 0.0);
+// Forme Perlin-Worley a une periode donnee (bourgeons ~ periode/4). La couverture decoupe la forme.
+float shape_at(vec3 pos, float cov, float period) {
+    vec4 sn = textureLod(shape_tex, pos / period + noise_drift(), 0.0);
     // Les Worley inverses sont tasses vers 1 : on etale leur contraste.
     float wfbm = smoothstep(0.45, 0.97, sn.g * 0.625 + sn.b * 0.25 + sn.a * 0.125);
     float pw = smoothstep(0.3, 0.97, sn.r);
     float base = remap(pw, -(1.0 - wfbm), 1.0, 0.0, 1.0);
     float shaped = clamp(remap(base, 1.0 - cov, 1.0, 0.0, 1.0), 0.0, 1.0) * cov;
     return mix(cov, shaped, p.ambient_bottom_detail.w);
+}
+
+// Passe 1 : forme. Grille geante (cellules ~190 m) : une passe grossiere (x3) efface les cellules et
+// donne les grands bourgeons, puis la meme passe que les nuages locaux ajoute leur grain (a demi-dose).
+float shape_density(vec3 pos, float cov) {
+    float fine = shape_at(pos, cov, p.volume.w);
+    if (g_giant < 0.01)
+        return fine;
+    float coarse = shape_at(pos, cov, p.volume.w * 3.0);
+    float giant = mix(coarse, shape_at(pos, coarse, p.volume.w), 0.5);
+    return mix(fine, giant, g_giant);
 }
 
 // Passe 2 : detail fin Worley sur les bords. Bas des nuages effiloche, haut boursoufle.
@@ -247,6 +258,12 @@ void main() {
     float ext = p.sun_color_extinction.w;
     float near_fade = p.ambient_top_threshold.w;
     int max_steps = int(p.march.x);
+    // Echantillons consecutifs vides (erodes) : le pas s allonge (jusqu a x4). Sinon, un rayon qui longe la frange
+    // d un nuage proche epuise ses pas avant d atteindre les nuages lointains, qui disparaissent.
+    // A la rentree dans la densite apres de grands pas : recul, puis pas fins (evite les stries de marche).
+    int thin_run = 0;
+    int fine_steps = 0;
+    float last_adv = 0.0;
 
     for (int i = 0; i < max_steps && t < t1; i++) {
         vec3 pos = cam + dir * t;
@@ -257,6 +274,7 @@ void main() {
         if (sdf > st) {
             t += sdf;   // saut du vide garanti par le SDF
             entered = false;
+            last_adv = 0.0;
             continue;
         }
         // A l'entree dans le nuage apres un saut, on re-jitter le pas : evite les anneaux en surface.
@@ -278,7 +296,7 @@ void main() {
 
         // LOD du bruit : de loin, les petites variations scintillent et coutent cher.
         // Le detail fin s'estompe puis n'est plus lu. La forme Perlin-Worley est toujours calculee :
-        // sans elle, les cellules de la grille geante (~380 m) apparaissent en marches d'escalier.
+        // sans elle, les cellules de la grille geante (~190 m) apparaissent en marches d'escalier.
         // Au-dela de giant_origin.w, l'ombrage n'utilise plus la forme (rayon d'ombre moins cher).
         float lod_fine = 1.0 - smoothstep(p.giant_origin.z * 0.25, p.giant_origin.z, t);
         float lod_shape = 1.0 - smoothstep(p.giant_origin.w * 0.3, p.giant_origin.w, t);
@@ -292,23 +310,40 @@ void main() {
         // Fondu pres de la camera : le joueur voit toujours son engin, meme dans le nuage.
         dens *= smoothstep(near_fade * 0.25, near_fade, t);
 
+        if (dens > 0.005 && last_adv > st * 1.01) {
+            t -= last_adv - st;
+            fine_steps = int(ceil(last_adv / st)) + 1;
+            last_adv = 0.0;
+            thin_run = 0;
+            continue;
+        }
+        thin_run = dens > 0.005 ? 0 : thin_run + 1;
+        float adv = fine_steps > 0 ? st : st * min(1.0 + 0.25 * float(thin_run), 4.0);
+        fine_steps = max(fine_steps - 1, 0);
+
         if (dens > 0.001) {
             if (first_hit < 0.0) first_hit = t;
-            float storm = c.b;
+            // Teinte d orage desactivee pour l instant (meme couleur que les autres nuages). Remettre 1.0 pour
+            // assombrir le coeur du cumulonimbus. Le canal reste utilise par le gameplay (eclairs).
+            float storm = c.b * 0.0;
             float sigma = dens * ext * (1.0 + storm * 2.0);
             float h = clamp((pos.y - slab_lo()) / 4000.0, 0.0, 1.0);
 
+            // Part du geant dans cet echantillon (lue avant que les rayons d ombre ne l ecrasent) : sur le
+            // cumulonimbus, transitions de lumiere a son echelle (plus douces), les autres nuages inchanges.
+            float gg = g_giant;
             float od = light_optical_depth(pos, lod_shape > 0.5);
             // Diffusion multiple approchee (octaves de Wrenninge) : coeur moins noir, bords contrastes.
             float beer = exp(-od) + 0.1 * exp(-od * 0.25) + 0.03 * exp(-od * 0.06);
             float powder = 1.0 - exp(-2.0 * od - 0.1);
             // Ombre de la Terre : le soleil couche n eclaire que ce qui depasse le plan d ombre incline.
             float shadow_h = p.earth_shadow.x - dot(pos.xz, p.earth_shadow.zw) * p.earth_shadow.y;
-            float sunlit = smoothstep(-60.0, 60.0, pos.y - shadow_h);
+            float shadow_soft = 60.0 + 900.0 * gg;
+            float sunlit = smoothstep(-shadow_soft, shadow_soft, pos.y - shadow_h);
             vec3 sun_l = sun_col * beer * mix(1.0, powder, 0.6) * phase * (1.0 - 0.92 * storm) * sunlit;
 
             // Occlusion ambiante par le SDF : plus on est profond dans le nuage, moins le ciel eclaire.
-            float ao = clamp(1.0 + sdf / 150.0, 0.2, 1.0);
+            float ao = clamp(1.0 + sdf / (150.0 * (1.0 + 4.0 * gg)), 0.2, 1.0);
             // Bas des masses : eclaire par la mer sombre. Haut : par le ciel.
             float up_open = clamp((sample_cloud(pos + vec3(0.0, 80.0, 0.0)).r + 30.0) / 150.0, 0.0, 1.0);
             vec3 amb = mix(p.ambient_bottom_detail.rgb, p.ambient_top_threshold.rgb, mix(h, up_open, 0.7)) * ao;
@@ -325,7 +360,7 @@ void main() {
             // fin d un nuage proche, un nuage lointain recevait le voile du proche et paraissait cerne de sombre.
             vec3 lum = mix(sun_l + amb, p.fog.rgb, 1.0 - exp(-t * p.fog.w));
             vec3 S = lum * sigma;
-            float Ts = exp(-sigma * st);
+            float Ts = exp(-sigma * adv);
             float w = T * (1.0 - Ts);
             depth_sum += t * w;
             depth_w += w;
@@ -333,7 +368,8 @@ void main() {
             T *= Ts;
             if (T < 0.01) { T = 0.0; break; }
         }
-        t += st;
+        t += adv;
+        last_adv = adv;
     }
 
 

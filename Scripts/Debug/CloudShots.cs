@@ -84,6 +84,15 @@ public partial class CloudShots : Node
         _shots.Add(("anti-solaire", new Vector3(0, above, 0), new Vector3(0, above, 0) - toSun * 1000f + Vector3.Up * 120f, false));
         Vector3 high = new(0, Bomba.Core.Twilight.ShadowAltitude + 900f, 0);
         _shots.Add(("altitude", high, high + toSun * 1000f - Vector3.Up * 40f, false));
+        // Bord : caméra au ras du flanc d'un cumulus, regard tangent à travers son bord vers l'horizon
+        // (les nuages lointains doivent rester visibles à travers le bord fin).
+        Vector3 side = new Vector3(1f, 0f, 0.35f).Normalized();
+        Vector3 edgePos = calmMid;
+        for (float r = 0f; r < 6000f && f.GetDensity(edgePos) > 0.01f; r += 10f)
+            edgePos = calmMid + side * r;
+        edgePos -= side * 15f;   // juste dans la frange du nuage
+        _shots.Add(("bord", edgePos - new Vector3(-side.Z, 0f, side.X) * 120f,
+            edgePos + new Vector3(-side.Z, 0f, side.X) * 1000f + Vector3.Up * 20f, false));
 
         // Les gouttes d'écran dépendent du véhicule (qui traverse des nuages) : masquées pour les plans fixes.
         if (GetTree().Root.FindChild("ScreenDroplets", true, false) is CanvasLayer droplets)

@@ -38,6 +38,8 @@ public partial class CloudEffects : Node, IVehicleTracker
     [Export] public float AmbientStrikeRate { get; set; } = 0.25f;
     /// <summary>Rayon (m) des éclairs décoratifs autour du joueur.</summary>
     [Export] public float AmbientStrikeRadius { get; set; } = 25000f;
+    /// <summary>Probabilité qu'un éclair d'ambiance puisse aussi partir d'un congestus local (éclair de chaleur, sans danger).</summary>
+    [Export(PropertyHint.Range, "0,1,0.01")] public float CongestusStrikeShare { get; set; } = 0f;
 
     [ExportGroup("Détection")]
     /// <summary>Densité au-delà de laquelle le joueur est considéré caché.</summary>
@@ -199,6 +201,12 @@ public partial class CloudEffects : Node, IVehicleTracker
 
     private void AmbientStrikes(CloudField field, Vector3 pos)
     {
+        // Viser un cœur orageux proche (cumulonimbus, et congestus selon CongestusStrikeShare).
+        if (field.TryRandomLightningPoint(pos, AmbientStrikeRadius, _rng, _rng.Randf() < CongestusStrikeShare, out Vector3 heat))
+        {
+            field.TriggerLightning(heat);
+            return;
+        }
         for (int i = 0; i < AmbientCandidates; i++)
         {
             Vector2 horizontal = Vector2.Right.Rotated(_rng.Randf() * Mathf.Tau)
