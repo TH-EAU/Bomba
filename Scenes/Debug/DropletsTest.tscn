@@ -9,4 +9,4 @@
 
 [node name="ScreenDroplets" type="CanvasLayer" parent="."]
 script = ExtResource("2_droplets")
-ForceCoverage = 0.7
+ForceRain = 1.0

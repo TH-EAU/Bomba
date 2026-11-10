@@ -450,3 +450,35 @@
 - Seulement sur les gouttes de plus de 2 pixels de large à l'écran, avec une montée jusqu'à 5 pixels. Sur un trait d'un pixel, le relief faisait scintiller des pixels isolés (pointillés) ; les gouttes lointaines gardent donc exactement leur rendu d'origine.
 - La texture classique (`WaterDrop.png`) n'est pas utilisée. En masque de forme, elle changerait l'aspect des gouttes, que l'on veut garder.
 - Test : `-- --rain` force une pluie pleine, hors orage.
+
+## 2026-11-10 : gouttes sur l'écran simulées (modèle Bebber)
+- Les perles sur rails fixes (`waterDropMap.jpg`) sont remplacées par une simulation de gouttes, `Scripts/Effects/DropletSim.cs`, d'après « RainEffect » de L. Bebber (Codrops). « Heartfelt » de BigWings a été écarté : tout procédural, ses gouttes ne peuvent ni fusionner ni réagir à la physique.
+  - **Impact** : la pluie et le nuage déposent des gouttes rondes, d'autant plus vite qu'on vole vite.
+  - **Fusion** : deux gouttes qui se touchent fusionnent, en conservant le volume.
+  - **Coulure** : une goutte coule quand la force × r² dépasse `StickRadius²`. La force combine la gravité vue par la caméra, qui suit le roulis, et un souffle radial depuis le point de fuite, proportionnel à l'accélération vers l'avant et au carré de la vitesse au-delà de 70 m/s. Une goutte qui coule ondule, prend une forme de larme, sème une traîne de gouttelettes et absorbe les gouttelettes croisées.
+- Rendu en deux cartes :
+  - **carte d'eau** : une SubViewport HDR où chaque goutte écrit sa hauteur d'eau, en calotte parabolique additive, plus son rayon ;
+  - **carte d'essuyage** : une SubViewport en quart de résolution, jamais effacée, où les gouttes qui coulent tracent leur sillon et où un voile translucide fait revenir la buée.
+- `screen_droplets.gdshader` garde l'optique d'avant (lentille inversée, bord sombre, reflet, éclat). Le bord sombre et le reflet sont réservés aux gouttes de plus de 2 à 4 px, sinon les gouttelettes faisaient des points noirs et blancs.
+- La buée est un voile global, flou et irrégulier, qui monte dans le nuage : des particules d'environ 1 px ne couvraient pas 1 % de l'écran. Les gouttes qui coulent y tracent des sillons nets, qui se referment lentement.
+- Coût mesuré : environ 0,4 ms par image (~110 images/s avec, ~115 sans, sans vsync, sous la pluie).
+- Tests : `-- --rain` (pluie forcée), `-- --drops-accel=T` (accélération de 20 m/s² de T à T + 1,5 s), `-- --in-cloud`.
+- Retouches du même jour, à la demande de l'utilisateur :
+  - **Impact écrasé** : une goutte apparaît en disque presque plat (épaisseur 0,35 px), 1,8 fois plus large que sa taille finale, au bord festonné. Elle se rassemble en 0,5 s (`GatherTime`, `SplashSpread`) et ne peut couler qu'une fois rassemblée.
+  - **Alignement sur la démo RainEffect** (réglages relevés dans son code source) :
+    - gouttes de 9 à 38 px, tirées en puissance 3 ; jusqu'à 900 gouttes ; coulure à partir de 18 px ;
+    - gouttes immobiles pendantes : étirées jusqu'à ×1,35 dans le sens de la gravité ;
+    - bruine de 1,5 à 4,5 px sous la pluie (`DrizzleRate`) ;
+    - traîne de vraies petites gouttes (20 à 45 % du rayon), la goutte perdant 3 % ; glisse par à-coups.
+  - **Rendu** : vitre mouillée floue sous la pluie aussi (`RainFog`), nette à travers les gouttes (`lens_blur` 0) ; ombre portée sous les gouttes ; bord sombre allégé (0,3).
+  - Coût remesuré : environ 1,1 ms par image (~96 images/s avec, ~108 sans, sous la pluie), au-dessus de la cible de 0,5 ms. Leviers si besoin : `MaxDrops`, `DrizzleRate`, `RainFog`.
+  - **Gouttes plus discrètes**, à la demande de l'utilisateur :
+    - calotte plus plate : `dome_height` 0,3, au lieu de 0,5 fois le rayon ;
+    - bord sombre 0,12 ; reflet 0,8 ; éclat 0,2 ; ombre portée 0,15.
+  - **Plus de grosses gouttes qui surgissent bombées** :
+    - après une fusion, le rassemblement est la moyenne pondérée par le volume (avant, il était forcé à « rassemblée ») : une goutte écrasée qui tombe sur une autre fait s'étaler le tout, qui se rassemble ensuite ;
+    - le rassemblement dure de 0,6 à 1,4 × `GatherTime` selon la taille : les grosses gouttes sont plus lentes.
+  - **Rien de peint par-dessus les gouttes**, à la demande de l'utilisateur. Il ne reste que :
+    - la **déformation** (lentille) ;
+    - un **reflet tiré de l'image** : la goutte reflète la scène autour d'elle (`reflect_extent_px`, légèrement flou), et seules les zones dont la luminance dépasse 0,6 y font un éclat, renforcé sur les bords (Fresnel). Sans lumière dans la scène, il n'y a pas de reflet.
+    - Supprimés : le reflet à direction de lumière fixe, l'éclat opposé, le bord sombre, l'ombre portée, la teinte bleutée, le bruit du voile de buée et son éclaircissement.
