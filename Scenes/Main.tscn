@@ -1,4 +1,4 @@
-[gd_scene load_steps=19 format=3 uid="uid://uf7iixraxb4d"]
+[gd_scene load_steps=20 format=3 uid="uid://uf7iixraxb4d"]
 
 [ext_resource type="Script" uid="uid://c0b45v830xeg3" path="res://Scripts/Core/GameRoot.cs" id="1_root"]
 [ext_resource type="Script" uid="uid://l3qtew02dtwn" path="res://Scripts/Arena/ArenaBuilder.cs" id="2_arena"]
@@ -18,6 +18,7 @@
 [ext_resource type="Script" uid="uid://ggxf52340y4d" path="res://Scripts/Clouds/StormWeather.cs" id="16_storm"]
 [ext_resource type="Script" uid="uid://d3gqi2o81w182" path="res://Scripts/Effects/Precipitation.cs" id="17_precip"]
 [ext_resource type="Script" uid="uid://hc4xa5s6ydq7" path="res://Scripts/Audio/WeatherAmbience.cs" id="18_ambience"]
+[ext_resource type="Script" path="res://Scripts/Effects/MotionBlur.cs" id="19_blur"]
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1_root")
@@ -97,3 +98,6 @@ HailOpacity = 0.9
 
 [node name="WeatherAmbience" type="Node" parent="."]
 script = ExtResource("18_ambience")
+
+[node name="MotionBlur" type="Node" parent="."]
+script = ExtResource("19_blur")

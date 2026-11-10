@@ -48,6 +48,10 @@ public partial class ChaseCamera : Camera3D, IVehicleTracker
     [Export] public float NitroShakeAmplitude { get; set; } = 0.35f;
     /// <summary>Durée de la secousse (s).</summary>
     [Export] public float NitroShakeDuration { get; set; } = 0.35f;
+    /// <summary>Part de la secousse gardée en vue cockpit : la coque est à quelques centimètres, le moindre décalage y paraît violent.</summary>
+    [Export(PropertyHint.Range, "0,1,0.05")] public float CockpitShakeScale { get; set; } = 0.15f;
+    /// <summary>Fréquence de la secousse (Hz). Un bruit lisse plutôt qu'un tirage par image : vibration, pas saccade.</summary>
+    [Export] public float ShakeFrequency { get; set; } = 18f;
 
     private Vehicle _target;
     private Vector3 _smoothedDir = Vector3.Forward;
@@ -56,6 +60,8 @@ public partial class ChaseCamera : Camera3D, IVehicleTracker
     private float _shakeTime;
     private float _shakeAmplitude;
     private float _shakeDuration = 1f;
+    private float _shakeClock;
+    private readonly FastNoiseLite _shakeNoise = new() { NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth, Seed = 3, Frequency = 1f };
     private float _chaseNear;
 
     private const float CockpitNear = 0.05f;
@@ -119,7 +125,10 @@ public partial class ChaseCamera : Camera3D, IVehicleTracker
         if (_shakeTime > 0f)
         {
             float amp = _shakeAmplitude * (_shakeTime / _shakeDuration);
-            shake = new Vector3(GD.Randf() * 2f - 1f, GD.Randf() * 2f - 1f, GD.Randf() * 2f - 1f) * amp;
+            _shakeClock += dt * ShakeFrequency;
+            // Bruit simplex brut borné à ±0,42 : ×2,3 pour retrouver l'amplitude demandée.
+            shake = new Vector3(_shakeNoise.GetNoise1D(_shakeClock), _shakeNoise.GetNoise1D(300f + _shakeClock),
+                _shakeNoise.GetNoise1D(600f + _shakeClock)) * (amp * 2.3f);
             _shakeTime -= dt;
         }
 
@@ -127,7 +136,7 @@ public partial class ChaseCamera : Camera3D, IVehicleTracker
         if (cockpit != null)
         {
             Transform3D ct = cockpit.GetGlobalTransformInterpolated();
-            ct.Origin += shake;
+            ct.Origin += shake * CockpitShakeScale;
             GlobalTransform = ct;
             Near = CockpitNear;
 

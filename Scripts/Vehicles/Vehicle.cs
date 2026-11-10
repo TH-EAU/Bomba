@@ -68,6 +68,14 @@ public partial class Vehicle : RigidBody3D
 	/// <summary>Maintien d'assiette (1/s) quand le tangage est au neutre : l'engin garde sa pente. 0 = désactivé.</summary>
 	[Export] public float PitchHold { get; set; } = 4f;
 
+	[ExportGroup("Houle")]
+	/// <summary>Amplitude (°) du léger roulis de houle, comme posé sur l'eau. 0 = désactivé.</summary>
+	[Export] public float SwayRollDeg { get; set; } = 3f;
+	/// <summary>Amplitude (°) du léger tangage de houle.</summary>
+	[Export] public float SwayPitchDeg { get; set; } = 1.5f;
+	/// <summary>Fréquence (Hz) de la houle : lente et irrégulière (bruit).</summary>
+	[Export] public float SwayFrequency { get; set; } = 0.12f;
+
 	[ExportGroup("Traînée (accélérations)")]
 	/// <summary>Traînée quadratique vers l'avant (1/m).</summary>
 	[Export] public float ForwardDrag { get; set; } = 0.004f;
@@ -158,6 +166,9 @@ public partial class Vehicle : RigidBody3D
 	private float _heldPitch;
 	private Vector3 _desiredAxis;
 	private float _neutralTime;
+	private float _swayTime, _prevSwayRoll;
+	private const float SwayNorm = 2.3f;   // le bruit reste dans ±0,42 : on le ramène vers ±1
+	private readonly FastNoiseLite _swayNoise = new() { NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth, Frequency = 1f, Seed = 17 };
 	private static readonly float AutoLevelMaxRate = Mathf.DegToRad(40f);   // remise à plat douce
 	private const float MaxHeldPitch = 1.05f; // ≈ 60°
 
@@ -344,6 +355,14 @@ public partial class Vehicle : RigidBody3D
 		float rollRate = Mathf.DegToRad(RollRateDeg);
 		float pitchRate = Mathf.DegToRad(PitchRateDeg);
 
+		// Houle : roulis et tangage lents et irréguliers, ajoutés à la commande (pas de couple brut, donc sans dériver).
+		float stepDt = Mathf.Max((float)GetPhysicsProcessDeltaTime(), 1e-4f);
+		_swayTime += stepDt;
+		float swayRoll = Mathf.DegToRad(SwayRollDeg) * SwayNorm * _swayNoise.GetNoise1D(_swayTime * SwayFrequency);
+		float swayPitch = Mathf.DegToRad(SwayPitchDeg) * SwayNorm * _swayNoise.GetNoise1D(500f + _swayTime * SwayFrequency * 0.8f);
+		float swayRollRate = (swayRoll - _prevSwayRoll) / stepDt;
+		_prevSwayRoll = swayRoll;
+
 		float rollCmd = 0f;
 		Vector3 hold = Vector3.Zero;
 		float pitchCmd = input.Pitch * pitchRate;
@@ -359,7 +378,7 @@ public partial class Vehicle : RigidBody3D
 			// lever ou baisser le nez, il ne fait jamais virer.
 			Vector3 level = forward.Cross(Vector3.Up);
 			if (level.LengthSquared() > 1e-6f)
-				hold = level.Normalized() * Mathf.Clamp((_heldPitch - noseUp) * PitchHold, -pitchRate, pitchRate);
+				hold = level.Normalized() * Mathf.Clamp((_heldPitch + swayPitch - noseUp) * PitchHold, -pitchRate, pitchRate);
 		}
 
 		// Roulis comme un joystick : pousser fait rouler (vitesse), lâcher garde l'inclinaison. Retour à plat seulement
@@ -376,6 +395,7 @@ public partial class Vehicle : RigidBody3D
 		}
 		else if (levelling && Mathf.Abs(noseUp) < Mathf.DegToRad(70f))
 			rollCmd = Mathf.Clamp(-bank / Mathf.Max(AutoLevelTime * 0.4f, 0.05f), -AutoLevelMaxRate, AutoLevelMaxRate);
+		rollCmd += swayRollRate;
 
 		// Retour à plat, nez trop près de la verticale (après un looping lâché) : on ramène d'abord le nez vers ±55°.
 		// Sens du tangage selon le dos ou le ventre (up.Y), pour baisser le nez dans tous les cas.

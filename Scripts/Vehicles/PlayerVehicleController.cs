@@ -22,6 +22,11 @@ public partial class PlayerVehicleController : Node, IVehicleTracker
     /// </summary>
     [Export(PropertyHint.Range, "0.1,1,0.05")] public float Sensitivity { get; set; } = 0.5f;
 
+    /// <summary>Amortissement (s) des commandes de roulis et de tangage : les gestes brusques sont adoucis. 0 = aucun.</summary>
+    [Export(PropertyHint.Range, "0,0.5,0.01")] public float InputSmoothing { get; set; } = 0.15f;
+
+    private float _smoothRoll, _smoothPitch;
+
     /// <summary>Inverse le tangage (style aviation : pousser = piquer).</summary>
     [Export] public bool InvertPitch { get; set; }
 
@@ -146,6 +151,13 @@ public partial class PlayerVehicleController : Node, IVehicleTracker
         float expo = Mathf.Clamp(1f - Sensitivity, 0f, 0.85f);
         roll = Expo(roll, expo);
         pitch = Expo(pitch, expo);
+
+        // Amortissement : lissage exponentiel (InputSmoothing = constante de temps).
+        float k = InputSmoothing > 0f ? 1f - Mathf.Exp(-(float)delta / InputSmoothing) : 1f;
+        _smoothRoll = Mathf.Lerp(_smoothRoll, roll, k);
+        _smoothPitch = Mathf.Lerp(_smoothPitch, pitch, k);
+        roll = Mathf.Abs(_smoothRoll) < 0.005f ? 0f : _smoothRoll;
+        pitch = Mathf.Abs(_smoothPitch) < 0.005f ? 0f : _smoothPitch;
 
         Target.CurrentInput = new VehicleInput
         {

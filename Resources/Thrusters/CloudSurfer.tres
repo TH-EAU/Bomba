@@ -16,3 +16,4 @@ FuelSeconds = 0.0
 FuelRegenPerSecond = 0.2
 ExhaustColor = Color(0.12, 0.1, 0.1, 1)
 FlameColor = Color(1, 0.45, 0.1, 1)
+LightningResistance = 0.3

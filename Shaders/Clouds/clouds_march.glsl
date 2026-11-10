@@ -157,7 +157,7 @@ void march_rain(vec3 cam, vec3 dir, float t_max, float jitter, inout vec3 L, ino
             continue;
         vec3 lum = amb;
         if (p.lightning.w > 0.0)
-            lum += vec3(0.75, 0.8, 1.0) * p.lightning.w * 6.0 * exp(-distance(pos, p.lightning.xyz) / 3000.0);
+            lum += vec3(0.7, 0.5, 1.0) * p.lightning.w * 6.0 * exp(-distance(pos, p.lightning.xyz) / 3000.0);
         lum = mix(lum, p.fog.rgb, 1.0 - exp(-t * p.fog.w));
         float Ts = exp(-dens * RAIN_EXTINCTION * st);
         L += T * lum * (1.0 - Ts);
@@ -505,7 +505,7 @@ void main() {
             // Flash d'eclair : lumiere ponctuelle froide qui illumine l'interieur du nuage.
             if (p.lightning.w > 0.0) {
                 float ld = distance(pos, p.lightning.xyz);
-                amb += vec3(0.75, 0.8, 1.0) * p.lightning.w * 22.0 * exp(-ld / 450.0);
+                amb += vec3(0.7, 0.5, 1.0) * p.lightning.w * 22.0 * exp(-ld / 450.0);
             }
 
             // Perspective atmospherique par echantillon (et non au premier contact) : sinon, a travers le bord

@@ -41,4 +41,7 @@ public partial class ThrusterProfile : Resource
 
     /// <summary>Couleur de la flamme.</summary>
     [Export] public Color FlameColor { get; set; } = new Color(1f, 0.55f, 0.15f);
+
+    /// <summary>Résistance à la foudre, 0..1 : 0 = le moteur se coupe à chaque coup, 1 = jamais.</summary>
+    [Export(PropertyHint.Range, "0,1,0.05")] public float LightningResistance { get; set; } = 0f;
 }

@@ -19,7 +19,7 @@ public partial class CloudRenderer : CompositorEffect
 	private const string Context = "bomba_clouds";
 	private const int ShapeNoiseSize = 64;
 	private const int DetailNoiseSize = 32;
-	private const int ParamsBytes = 464;
+	private const int ParamsBytes = 480;
 
 	// --- Paramètres (écrits par CloudField) ---
 	public byte[] CloudData;
@@ -30,6 +30,8 @@ public partial class CloudRenderer : CompositorEffect
 	public float SunIntensity = 1f;
 	public Color SunColor = Colors.White;
 	public float Extinction = 0.05f, NearFade = 26f;
+	/// <summary>Densité du nuage à la caméra (× renfort), pour le brouillard proche que la marche efface (NearFade).</summary>
+	public float NearFog;
 	public Color AmbientTop = new(0.5f, 0.55f, 0.85f), AmbientBottom = new(0.12f, 0.14f, 0.3f);
 	/// <summary>Période (m) de la texture de forme ; le détail fin est à 0,22 × cette valeur.</summary>
 	public float DetailScale = 220f;
@@ -322,6 +324,7 @@ public partial class CloudRenderer : CompositorEffect
 		Add(f, Shadow.X, Shadow.Y, Shadow.Z, Shadow.W);
 		Add(f, Rain.X, Rain.Y, Rain.Z, Rain.W);
 		Add(f, StormEye.X, StormEye.Y, StormEye.Z, StormEye.W);
+		Add(f, NearFog, 0f, 0f, 0f);
 
 		var bytes = new byte[ParamsBytes];
 		Buffer.BlockCopy(f.ToArray(), 0, bytes, 0, Math.Min(bytes.Length, f.Count * 4));

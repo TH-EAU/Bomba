@@ -30,7 +30,9 @@ public partial class LightningSystem : Node3D
     [Export] public float BoltWidth { get; set; } = 2.5f;
     /// <summary>Demi-largeur minimale à l'écran (pixels) : le canal reste visible de loin.</summary>
     [Export] public float BoltMinPixels { get; set; } = 1f;
-    [Export] public Color BoltColor { get; set; } = new(0.8f, 0.85f, 1f);
+    [Export] public Color BoltColor { get; set; } = new(0.75f, 0.45f, 1f);
+    /// <summary>Demi-largeur du tronc (m) d'un éclair qui frappe l'engin : il finit à quelques mètres de la caméra.</summary>
+    [Export] public float StrikeBoltWidth { get; set; } = 0.35f;
 
     [ExportGroup("Tonnerre")]
     /// <summary>
@@ -47,7 +49,7 @@ public partial class LightningSystem : Node3D
     private const float DownStep = 40f;
     private const float CloudExitDensity = 0.02f;
     private const float FlashDuration = 0.3f;
-    private static readonly Color FlashColor = new(0.7f, 0.8f, 1f);
+    private static readonly Color FlashColor = new(0.7f, 0.5f, 1f);
 
     private readonly RandomNumberGenerator _rng = new();
     private CloudField _field;
@@ -75,6 +77,8 @@ public partial class LightningSystem : Node3D
     {
         if (_field != null && IsInstanceValid(_field))
             _field.LightningTriggered -= OnLightningTriggered;
+        if (_field != null && IsInstanceValid(_field))
+            _field.StrikeTriggered -= OnStrikeTriggered;
         _field = null;
     }
 
@@ -86,6 +90,7 @@ public partial class LightningSystem : Node3D
             return false;
         _field = CloudField.Instance;
         _field.LightningTriggered += OnLightningTriggered;
+        _field.StrikeTriggered += OnStrikeTriggered;
         return true;
     }
 
@@ -103,6 +108,29 @@ public partial class LightningSystem : Node3D
 
         AddFlash(position);
         ScheduleThunder(position);
+    }
+
+    /// <summary>
+    /// Frappe sur l'engin : le traceur part tout de suite ; flash, lueur du nuage et tonnerre attendent l'arc en retour,
+    /// au point d'impact à cet instant (la cible a bougé).
+    /// </summary>
+    private void OnStrikeTriggered(Vector3 from, Node3D target, Vector3 targetLocal, float leaderTime)
+    {
+        if (target == null || !IsInstanceValid(target))
+            return;
+        var bolt = new LightningBolt();
+        AddChild(bolt);
+        bolt.SetLook(BoltEnergy, StrikeBoltWidth, BoltMinPixels, BoltColor);
+        bolt.SetupStrike(from, target, targetLocal, leaderTime, _rng);
+
+        Vector3 fallback = target.GlobalTransform * targetLocal;
+        GetTree().CreateTimer(leaderTime, false, true).Timeout += () =>
+        {
+            Vector3 impact = IsInstanceValid(target) ? target.GlobalTransform * targetLocal : fallback;
+            AddFlash(impact);
+            _field?.FlashCloud(impact);
+            ScheduleThunder(impact);
+        };
     }
 
     /// <summary>
@@ -177,7 +205,7 @@ public partial class LightningSystem : Node3D
         var bolt = new LightningBolt();
         AddChild(bolt);
         bolt.SetLook(BoltEnergy, BoltWidth, BoltMinPixels, BoltColor);
-        bolt.Setup(from, to, _rng);
+        bolt.Setup(from, to, _rng, to.Y <= SeaLevel + 1f);
     }
 
     private void AddFlash(Vector3 position)

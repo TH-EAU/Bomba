@@ -383,3 +383,57 @@
   - `ForwardDrag` 0,012 (vitesse de palier validée).
 - Sonde : palier ~58 m/s, altitude tenue ; incliné + tirer ~50 °/s, vitesse tenue ; frein 64 → 40 m/s ; nitro ~95 m/s ; gaz coupés : chute immédiate.
 - Note : sans retour à plat automatique, les scénarios de la sonde s'enchaînent avec l'inclinaison héritée (le « looping » part incliné). À reprendre si on a besoin de mesures isolées.
+
+## 2026-11-10 : houle et amortissement des commandes
+- Houle (demande de l'utilisateur : « comme si on était posé sur l'eau ») : `Vehicle`, groupe « Houle » :
+  - `SwayRollDeg` 3, `SwayPitchDeg` 1,5, `SwayFrequency` 0,12 Hz, bruit simplex normalisé (×2,3, le bruit brut plafonnant à ±0,42) ;
+  - le roulis est ajouté à la commande de vitesse de roulis (dérivée de l'angle de houle), le tangage à la cible du maintien d'assiette. Pas de couple brut : l'engin oscille sans dériver ;
+  - le bateau oscille vraiment, donc en vue extérieure comme en cockpit.
+- Amortissement des commandes : `PlayerVehicleController.InputSmoothing` 0,15 s (lissage exponentiel du roulis et du tangage, après la courbe expo).
+
+## 2026-11-10 : flou de mouvement
+- `Scripts/Effects/MotionBlur.cs` (nœud `MotionBlur` dans `Main.tscn`) accroche un `CompositorEffect` (PostTransparent, compute) à la caméra courante : copie de l'image, puis flou le long du déplacement de chaque pixel, reprojeté par la matrice vue-projection de l'image précédente (mouvement de caméra seulement).
+- Pas de quad plein écran `hint_screen_texture` : la copie d'écran est prise avant la composition des nuages, qui disparaissaient.
+- L'engin reste net : les pixels proches (< `NearClear` 12 m) ne sont pas floutés, et les échantillons qui tombent sur un objet proche sont ignorés (sinon la coque bavait sur le décor).
+- Réglages : `Strength` 0,6, `MaxLength` 0,035 (fraction de l'écran), `Samples` 10. `Strength` 0 désactive l'effet.
+- Nitro : le flou monte à `NitroStrength` 1,6 / `NitroMaxLength` 0,07 en 0,3 s (`NitroBlendTime`), avec deux fois plus d'échantillons pour ne pas strier.
+- Secousse de nitro en cockpit (« trop violente ») : `ChaseCamera.CockpitShakeScale` 0,15 (≈ 5 cm au lieu de 35), et la secousse suit un bruit lisse à 18 Hz (`ShakeFrequency`) au lieu d'un tirage aléatoire par image. La vue poursuite garde son amplitude.
+
+## 2026-11-10 : foudre sur l'engin (traceur puis arc en retour) et résistance des moteurs
+- Demande de l'utilisateur : d'abord un filet fin qui cherche son chemin, puis BOOM. Avant, l'éclair partait d'un point au hasard à 40–120 m (même par en dessous), avec un traceur invisible (30 000 m/s) et le choc immédiat.
+- Frappe (`CloudEffects.Strike`) :
+  - le traceur part 500–900 m devant, 120–250 m au-dessus, ±250 m de côté. Plus haut, le toit du cockpit le cache ;
+  - il vise la **proue** : la foudre s'accroche aux extrémités et le courant traverse la coque jusqu'aux moteurs. La proue est visible du cockpit, et le canal ne finit pas dans la caméra ;
+  - choc (impulsion, rotation, coupures, secousse), flash, lueur du nuage et tonnerre tombent à l'arc en retour, `StrikeLeaderTime` 0,6 s après.
+- **Coup inévitable** (choix de l'utilisateur) : le canal se tord pour suivre l'engin. Poids t² le long du tronc, décalage `target_offset` dans le shader, sans régénérer la géométrie.
+- Canal (`LightningBolt.SetupStrike`, `lightning_channel.gdshader`) :
+  - traceur **par bonds** (sauts de 35 ms), à 30 % de la largeur ;
+  - 6 à 10 filets morts autour du tronc ;
+  - à l'arc en retour, les branches retombent à 15 % de l'éclat, et le tronc s'allume en entier ;
+  - tronc découpé d'un niveau de plus, pour rester anguleux de près ;
+  - `StrikeBoltWidth` 0,35 m.
+- Les éclairs nuage-mer d'ambiance (`Setup`) ont le même traceur par bonds (0,25 à 0,5 s selon la longueur) et les mêmes filets : les deux types se ressemblent.
+- Flou de mouvement : moyenne de Karis (poids 1 / (1 + luminance)) et `max(flou, centre × 0,5)`. Sans cela, l'éclair HDR s'étalait en large bande blanche pendant la secousse.
+- **Résistance des moteurs** (choix de l'utilisateur : par moteur, dans le profil) :
+  - `ThrusterProfile.LightningResistance` et `Propeller.Resistance`, de 0 à 1. Les modules sans moteur valent 1 ;
+  - à l'impact, chaque moteur se coupe avec la probabilité 1 − r, pendant `StallDuration × (1 − r) × [0,6 ; 1,4]`. L'aléa rend la coupure asymétrique, donc l'engin part en vrille ;
+  - impulsion et rotation × (1 − 0,6 × résistance moyenne) ;
+  - valeurs : profil CloudSurfer 0,3, autres profils 0 (comportement d'avant).
+- Test : `-- --force-strike=S` provoque une frappe à S secondes. Le journal affiche « [Foudre] » (traceur, impact, moteurs coupés).
+- Couleur (demande de l'utilisateur : « violet ») : `BoltColor` (0,75 ; 0,45 ; 1), flash (0,7 ; 0,5 ; 1), lueur dans les nuages (`clouds_march.glsl`, 2 occurrences) (0,7 ; 0,5 ; 1). Le cœur HDR sature vers le blanc ; le halo et le flash portent le violet.
+- Jonction canal / coque (signalée par l'utilisateur : « forme bizarre au toucher, on voit l'éclair se couper ») :
+  - le point d'accroche est la **pointe réelle de la proue**, c'est-à-dire le sommet le plus en avant du modèle (calculé une fois par engin, sans les visuels des moteurs). Avant, il venait de la boîte de collision et l'éclair finissait dans le vide ;
+  - largeur du canal plafonnée à 4 px de demi-largeur (`max_core_px`). De près, les rubans larges se découpaient en dents de scie ;
+  - petit éclat d'impact (`Shaders/Effects/lightning_impact.gdshader`, disque de 1,2 m, sans test de profondeur) qui suit la proue et masque la jonction.
+- Note : les captures `--write-movie` remplissent vite le disque C:. Un disque plein fait planter Godot (signal 11) au premier rendu. Supprimer les captures après usage.
+- Pointes libres affinées (demande de l'utilisateur : « extrémités plates », sans toucher au reste) : sur les 9 derniers points de chaque pointe sans suite, la largeur (minimum en pixels compris) descend jusqu'à 0. Le facteur est empaqueté dans `CUSTOM1.z` (centièmes × 10 + largeur). Restent pleines : le point d'impact sur l'engin et la pointe d'un éclair nuage-mer qui touche la mer.
+
+## 2026-11-10 : brouillard proche dans les nuages
+- Demande de l'utilisateur : dans un nuage, on devrait peiner à voir le bout du bateau.
+- Cause : la marche efface la densité devant la caméra (`NearFadeDistance` 18 m, fondu de 4,5 à 18 m), si bien que l'engin restait net.
+- Correction dans `clouds_composite.glsl`, presque gratuite (12 lectures de texels identiques pour tout l'écran) :
+  - on rend ce voile manquant, uniforme : densité du nuage à la caméra (CPU, lissée sur 0,25 s) × extinction × longueur effacée ;
+  - sa couleur est la moyenne des texels opaques d'une grille 4×3 du rendu des nuages, c'est-à-dire la couleur du nuage autour ;
+  - `CloudField.NearFogBoost` 4 : on peine à voir la proue (≈ 6 m) dans un nuage dense. 1 serait la valeur physique, avec une visibilité d'environ 20 m à densité 1.
+- Paramètres : un `vec4 near_fog` ajouté en fin de tampon (`ParamsBytes` 464 → 480).
+- Test : `-- --in-cloud` place l'engin dans un cœur de nuage dense.

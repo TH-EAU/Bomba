@@ -37,6 +37,8 @@ public partial class Thruster : VehicleModule
 	/// <summary>Poussée actuelle (N), sans le multiplicateur de nitro.</summary>
 	public override float CurrentPower => SpoolLevel * MaxPower;
 
+	public override float LightningResistance => Profile?.LightningResistance ?? 0f;
+
 	/// <summary>Hauteur du cylindre de flamme avant mise à l'échelle par le régime.</summary>
 	private const float FlameMeshHeight = 1f;
 

@@ -25,6 +25,14 @@ layout(set = 0, binding = 4, std140) uniform Params {
     vec4 sizes;
     vec4 fog;
     vec4 march;
+    mat4 prev_view_proj;
+    vec4 temporal;
+    vec4 giant_volume;
+    vec4 giant_origin;
+    vec4 earth_shadow;
+    vec4 rain;
+    vec4 storm_eye;
+    vec4 near_fog;                // x densite du nuage a la camera (x renfort)
 } p;
 
 vec3 view_from_depth(vec2 uv, float d) {
@@ -66,5 +74,27 @@ void main() {
 
     vec4 color = imageLoad(color_image, px);
     color.rgb = color.rgb * cloud.a + cloud.rgb;
+
+    // Brouillard proche dans un nuage : la marche efface la densite devant la camera (fondu sur near_fade), on rend
+    // ici ce voile manquant, uniforme, a la couleur moyenne du nuage visible (moyenne des texels opaques d une grille
+    // de 4x3 points, les memes pour tout l ecran).
+    if (p.near_fog.x > 0.001) {
+        float nf = p.ambient_top_threshold.w;
+        float dn = min(dist, nf);
+        // Densite manquante = 1 - smoothstep(nf / 4, nf, t), integree de 0 a dn (approximation lineaire du fondu).
+        float missing = min(dn, 0.25 * nf) + max(dn - 0.25 * nf, 0.0) * (1.0 - 0.5 * (dn - 0.25 * nf) / (0.75 * nf));
+        float tn = exp(-p.near_fog.x * p.sun_color_extinction.w * missing);
+        vec3 fog_sum = vec3(0.0);
+        float fog_w = 0.0;
+        for (int j = 0; j < 3; j++) {
+            for (int i = 0; i < 4; i++) {
+                vec4 c = texelFetch(half_cloud, ivec2(vec2(half_size) * vec2((float(i) + 0.5) / 4.0, (float(j) + 0.5) / 3.0)), 0);
+                fog_sum += c.rgb;
+                fog_w += 1.0 - c.a;
+            }
+        }
+        vec3 fog_col = fog_w > 0.05 ? fog_sum / fog_w : p.fog.rgb;
+        color.rgb = color.rgb * tn + fog_col * (1.0 - tn);
+    }
     imageStore(color_image, px, color);
 }

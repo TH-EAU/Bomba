@@ -42,11 +42,28 @@ public partial class LightningBolt : MeshInstance3D
     private readonly List<Vector3> _points = new();
     private readonly List<float> _distance = new();   // longueur de canal depuis l'origine (m)
     private readonly List<float> _width = new();      // largeur relative du canal en ce point
+    private readonly List<float> _follow = new();     // part du déplacement de la cible suivie par ce point (0..1)
+    private readonly List<bool> _branch = new();      // branche (sinon tronc) : faible à l'arc en retour
     private readonly List<(int A, int B)> _segments = new();
 
     private ShaderMaterial _material;
     private float _age;
     private float _leaderEnd;
+    private int _anchoredTip = -1;   // pointe qui touche quelque chose : pas affinée
+    // Pointes libres : la largeur tombe à zéro sur les derniers points (sinon le ruban finit carré, et le glow l'élargit).
+    private const int TipTaperPoints = 9;
+
+    // Frappe : cible suivie par le canal (coup inévitable).
+    private Node3D _target;
+    private Vector3 _targetLocal, _impactStart;
+    private ShaderMaterial _impactMaterial;   // éclat au point d'impact : masque la jonction canal / coque
+    private const string ImpactShaderPath = "res://Shaders/Effects/lightning_impact.gdshader";
+    private const float ImpactSize = 1.2f;   // m
+
+    // Traceur par bonds : le canal avance par sauts, mince et faible, puis l'arc en retour le remplit.
+    private const float StepTime = 0.035f;
+    private const float LeaderWidth = 0.3f;
+    private const float BranchFlash = 0.15f;
 
     public override void _Ready() => TopLevel = true;
 
@@ -70,7 +87,8 @@ public partial class LightningBolt : MeshInstance3D
     }
 
     /// <summary>Éclair ramifié de <paramref name="from"/> à <paramref name="to"/> (coordonnées globales).</summary>
-    public void Setup(Vector3 from, Vector3 to, RandomNumberGenerator rng)
+    /// <param name="touches">Vrai si le canal touche quelque chose (la mer) : sa pointe reste pleine, sinon elle s'affine.</param>
+    public void Setup(Vector3 from, Vector3 to, RandomNumberGenerator rng, bool touches = false)
     {
         int root = AddPoint(from, 0f, 3f);
         List<Vector3> trunk = Subdivide(from, to, MainLevels, rng);
@@ -85,9 +103,73 @@ public partial class LightningBolt : MeshInstance3D
             int at = trunkIdx[rng.RandiRange(trunkIdx.Count / 4, trunkIdx.Count * 3 / 4)];
             Vector3 dir = mainDir.Rotated(Perpendicular(mainDir, rng), Mathf.DegToRad(rng.RandfRange(25f, 50f)));
             Vector3 start = _points[at];
-            AddChain(at, Subdivide(start, start + dir * totalLength * rng.RandfRange(0.15f, 0.35f), BranchLevels, rng), 1f);
+            AddChain(at, Subdivide(start, start + dir * totalLength * rng.RandfRange(0.15f, 0.35f), BranchLevels, rng), 1f, true);
         }
-        Finish(ForkLeaderSpeed);
+        if (touches)
+            _anchoredTip = trunkIdx[^1];
+        AddSearchBranches(trunkIdx, mainDir, totalLength, rng);
+        // Traceur visible : 0,25 à 0,5 s selon la longueur (la vraie foudre est bien plus rapide).
+        FinishLeader(trunkIdx[^1], Mathf.Clamp(totalLength / 12000f, 0.25f, 0.5f));
+    }
+
+    /// <summary>
+    /// Frappe sur une cible mobile : traceur par bonds depuis <paramref name="from"/>, entouré de filets qui cherchent
+    /// leur chemin, puis arc en retour au bout de <paramref name="leaderTime"/> s. Le canal se tord pour suivre le point
+    /// <paramref name="targetLocal"/> de <paramref name="target"/> : le coup est inévitable.
+    /// </summary>
+    public void SetupStrike(Vector3 from, Node3D target, Vector3 targetLocal, float leaderTime, RandomNumberGenerator rng)
+    {
+        _target = target;
+        _targetLocal = targetLocal;
+        _impactStart = target.GlobalTransform * targetLocal;
+
+        int root = AddPoint(from, 0f, 3f);
+        // Un niveau de plus : vu de près, le canal reste anguleux jusqu'au point d'impact.
+        List<int> trunkIdx = AddChain(root, Subdivide(from, _impactStart, MainLevels + 1, rng), 3f);
+        // Suivi : nul à l'origine (dans le nuage), total au point d'impact, en t² pour que le haut du canal bouge peu.
+        for (int i = 0; i < trunkIdx.Count; i++)
+        {
+            float t = (float)i / (trunkIdx.Count - 1);
+            _follow[trunkIdx[i]] = t * t;
+        }
+
+        Vector3 mainDir = (_impactStart - from).Normalized();
+        float totalLength = from.DistanceTo(_impactStart);
+        _anchoredTip = trunkIdx[^1];   // le point d'impact touche la coque
+        AddSearchBranches(trunkIdx, mainDir, totalLength, rng);
+        FinishLeader(trunkIdx[^1], leaderTime);
+
+        _impactMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(ImpactShaderPath) };
+        if (_look.HasValue)
+        {
+            _impactMaterial.SetShaderParameter("energy", _look.Value.Energy);
+            _impactMaterial.SetShaderParameter("bolt_color", new Vector3(_look.Value.Color.R, _look.Value.Color.G, _look.Value.Color.B));
+        }
+        var impact = new MeshInstance3D
+        {
+            Mesh = new QuadMesh { Size = new Vector2(ImpactSize, ImpactSize) },
+            MaterialOverride = _impactMaterial,
+            CastShadow = ShadowCastingSetting.Off,
+            TopLevel = true,
+        };
+        AddChild(impact);
+        impact.GlobalPosition = _impactStart;
+    }
+
+    /// <summary>
+    /// Filets du traceur : branches mortes, fines, réparties sur tout le tronc et orientées comme lui. Bien visibles
+    /// pendant la recherche, presque éteintes à l'arc en retour.
+    /// </summary>
+    private void AddSearchBranches(List<int> trunkIdx, Vector3 mainDir, float totalLength, RandomNumberGenerator rng)
+    {
+        int count = rng.RandiRange(6, 10);
+        for (int b = 0; b < count; b++)
+        {
+            int at = trunkIdx[rng.RandiRange(trunkIdx.Count / 10, trunkIdx.Count * 19 / 20)];
+            Vector3 dir = mainDir.Rotated(Perpendicular(mainDir, rng), Mathf.DegToRad(rng.RandfRange(20f, 60f)));
+            Vector3 start = _points[at];
+            AddChain(at, Subdivide(start, start + dir * totalLength * rng.RandfRange(0.06f, 0.2f), BranchLevels, rng), 0.4f, true);
+        }
     }
 
     /// <summary>Éclair qui parcourt le nuage depuis <paramref name="start"/>, en longeant sa frange.</summary>
@@ -157,15 +239,25 @@ public partial class LightningBolt : MeshInstance3D
         }
         // Arc en retour : éclat 0,06 s, creux 0,04 s, second éclat 0,1 s, puis extinction.
         float flash = t < 0f ? 0f : t < 0.06f ? 1f : t < 0.1f ? 0.2f : t < 0.2f ? 0.9f : 0.9f * (1f - (t - 0.2f) / (StrokeLife - 0.2f));
+        if (_target != null && IsInstanceValid(_target))
+            _material.SetShaderParameter("target_offset", _target.GetGlobalTransformInterpolated() * _targetLocal - _impactStart);
         _material.SetShaderParameter("progress", _age);
         _material.SetShaderParameter("flash", Mathf.Max(flash, 0f));
+        if (_impactMaterial != null)
+        {
+            _impactMaterial.SetShaderParameter("flash", Mathf.Max(flash, 0f));
+            if (_target != null && IsInstanceValid(_target) && GetChildCount() > 0 && GetChild(0) is MeshInstance3D impact)
+                impact.GlobalPosition = _target.GetGlobalTransformInterpolated() * _targetLocal;
+        }
     }
 
-    private int AddPoint(Vector3 p, float distance, float width)
+    private int AddPoint(Vector3 p, float distance, float width, float follow = 0f, bool branch = false)
     {
         _points.Add(p);
         _distance.Add(distance);
         _width.Add(width);
+        _follow.Add(follow);
+        _branch.Add(branch);
         return _points.Count - 1;
     }
 
@@ -173,7 +265,7 @@ public partial class LightningBolt : MeshInstance3D
     /// Relie <paramref name="from"/> aux points de <paramref name="path"/> (le premier est le point de départ), lissé en
     /// spline. La largeur décroît linéairement de <paramref name="width"/> au départ à 30 % à l'arrivée.
     /// </summary>
-    private List<int> AddChain(int from, List<Vector3> path, float width)
+    private List<int> AddChain(int from, List<Vector3> path, float width, bool branch = false)
     {
         path = Smooth(path, SplineSubdivisions);
         var indices = new List<int> { from };
@@ -181,7 +273,8 @@ public partial class LightningBolt : MeshInstance3D
         for (int i = 1; i < path.Count; i++)
         {
             float w = width * (1f - 0.7f * i / (path.Count - 1));
-            int next = AddPoint(path[i], _distance[prev] + _points[prev].DistanceTo(path[i]), w);
+            // Une branche suit la cible comme son point d'attache.
+            int next = AddPoint(path[i], _distance[prev] + _points[prev].DistanceTo(path[i]), w, _follow[from], branch);
             _segments.Add((prev, next));
             indices.Add(next);
             prev = next;
@@ -194,18 +287,33 @@ public partial class LightningBolt : MeshInstance3D
     private const float CloudExtinction = 0.006f;   // par mètre à densité 1
     private const int VisibilitySamples = 32;
 
-    private void Finish(float leaderSpeed)
+    /// <summary>Traceur réglé pour que la pointe du tronc <paramref name="tip"/> arrive en <paramref name="leaderTime"/> s, par bonds.</summary>
+    private void FinishLeader(int tip, float leaderTime)
+    {
+        leaderTime = Mathf.Max(leaderTime, 0.05f);
+        Finish(Mathf.Max(_distance[tip], 1f) / leaderTime, leaderTime);
+        _material.SetShaderParameter("step_time", StepTime);
+        _material.SetShaderParameter("leader_width", LeaderWidth);
+        _material.SetShaderParameter("branch_flash", BranchFlash);
+    }
+
+    /// <summary>
+    /// Construit le maillage. <paramref name="leaderEnd"/> &gt; 0 fixe l'arc en retour à cet instant : les filets plus
+    /// longs que le tronc sont tronqués dans le temps (ils apparaissent tous pendant le traceur).
+    /// </summary>
+    private void Finish(float leaderSpeed, float leaderEnd = -1f)
     {
         CloudField field = CloudField.Instance;
         Vector3? cam = GetViewport()?.GetCamera3D()?.GlobalPosition;
         float maxDistance = 0f;
         var visibility = new float[_points.Count];
+        float[] tip = TipFactors();
         for (int i = 0; i < _points.Count; i++)
         {
             maxDistance = Mathf.Max(maxDistance, _distance[i]);
             visibility[i] = cam.HasValue && field != null ? Visibility(cam.Value, _points[i], field) : 1f;
         }
-        _leaderEnd = Mathf.Max(maxDistance / leaderSpeed, 0.05f);
+        _leaderEnd = leaderEnd > 0f ? leaderEnd : Mathf.Max(maxDistance / leaderSpeed, 0.05f);
 
         int n = _segments.Count * 4;
         var verts = new Vector3[n];
@@ -227,9 +335,11 @@ public partial class LightningBolt : MeshInstance3D
                 custom0[v * 4 + 1] = o.Y;
                 custom0[v * 4 + 2] = o.Z;
                 custom0[v * 4 + 3] = side;
-                custom1[v * 4] = _distance[self] / leaderSpeed;
+                custom1[v * 4] = Mathf.Min(_distance[self] / leaderSpeed, _leaderEnd * 0.98f);
                 custom1[v * 4 + 1] = visibility[self];
-                custom1[v * 4 + 2] = _width[self];
+                // Largeur et affinage des pointes, empaquetés : centièmes d'affinage × 10 + largeur (< 10).
+                custom1[v * 4 + 2] = Mathf.Round(tip[self] * 100f) * 10f + Mathf.Min(_width[self], 9.99f);
+                custom1[v * 4 + 3] = _branch[self] ? -1f - _follow[self] : _follow[self];
             }
             int i0 = s * 4;
             indices[s * 6] = i0;
@@ -261,6 +371,33 @@ public partial class LightningBolt : MeshInstance3D
         CastShadow = ShadowCastingSetting.Off;
         ExtraCullMargin = 2000f;   // les rubans sont élargis dans le shader
         GlobalTransform = Transform3D.Identity;
+    }
+
+    /// <summary>
+    /// Affinage 0..1 de chaque point : 1 partout, descendant à 0 sur les <see cref="TipTaperPoints"/> derniers points de
+    /// chaque pointe libre (point sans suite), sauf la pointe qui touche (<see cref="_anchoredTip"/>).
+    /// </summary>
+    private float[] TipFactors()
+    {
+        var factor = new float[_points.Count];
+        var parent = new int[_points.Count];
+        var hasChild = new bool[_points.Count];
+        System.Array.Fill(factor, 1f);
+        System.Array.Fill(parent, -1);
+        foreach (var (a, b) in _segments)
+        {
+            parent[b] = a;
+            hasChild[a] = true;
+        }
+        for (int i = 0; i < _points.Count; i++)
+        {
+            if (hasChild[i] || i == _anchoredTip || parent[i] < 0)
+                continue;
+            int p = i;
+            for (int k = 0; k <= TipTaperPoints && p >= 0; k++, p = parent[p])
+                factor[p] = Mathf.Min(factor[p], (float)k / TipTaperPoints);
+        }
+        return factor;
     }
 
     /// <summary>

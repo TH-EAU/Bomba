@@ -174,6 +174,12 @@ public partial class CloudField : Node, IWindSource
 	[Export] public float SunIntensityScale { get; set; } = 1.8f;
 	/// <summary>Distance (m) en deçà de laquelle les nuages s'effacent devant la caméra (on voit son engin).</summary>
 	[Export] public float NearFadeDistance { get; set; } = 18f;
+	/// <summary>
+	/// Brouillard proche dans un nuage : la marche efface les nuages devant la caméra (NearFadeDistance), la composition
+	/// rend ce voile à part, uniforme, à la couleur du nuage autour. Renfort de son épaisseur : 1 = physique, 4 = on peine
+	/// à voir la proue dans un nuage dense.
+	/// </summary>
+	[Export] public float NearFogBoost { get; set; } = 4f;
 	[Export] public float DetailScale { get; set; } = 900f;
 	[Export(PropertyHint.Range, "0,1,0.01")] public float DetailStrength { get; set; } = 1.0f;
 
@@ -197,6 +203,7 @@ public partial class CloudField : Node, IWindSource
 	public Vector2 Offset { get; private set; }
 
 	public bool IsBaked { get; private set; }
+	private float _nearFog;   // densité lissée à la caméra
 	public float GiantTileSize => TileSize * GiantTileFactor;
 
 	/// <summary>Grille locale (nappe, cumulus, congestus).</summary>
@@ -347,6 +354,10 @@ public partial class CloudField : Node, IWindSource
 		r.Offset = Offset;
 		r.Extinction = Extinction;
 		r.NearFade = NearFadeDistance;
+		Camera3D nearCam = GetViewport()?.GetCamera3D();
+		float camDensity = nearCam != null && IsBaked ? Sample(nearCam.GlobalPosition).Density : 0f;
+		_nearFog = Mathf.Lerp(_nearFog, camDensity, 1f - Mathf.Exp(-(float)GetProcessDeltaTime() / 0.25f));
+		r.NearFog = _nearFog * NearFogBoost;
 		r.AmbientTop = AmbientTop;
 		r.AmbientBottom = AmbientBottom;
 		r.FogColor = FogColor;
@@ -508,6 +519,25 @@ public partial class CloudField : Node, IWindSource
 		LightningPosition = worldPos;
 		LightningTime = Time.GetTicksMsec() / 1000.0;
 		EmitSignal(SignalName.LightningTriggered, worldPos, strikeTarget, hasTarget);
+	}
+
+	/// <summary>
+	/// Émis quand la foudre frappe une cible mobile : traceur depuis <paramref name="from"/> vers le point
+	/// <paramref name="targetLocal"/> de <paramref name="target"/> (repère local), arc en retour après <paramref name="leaderTime"/> s.
+	/// </summary>
+	[Signal] public delegate void StrikeTriggeredEventHandler(Vector3 from, Node3D target, Vector3 targetLocal, float leaderTime);
+
+	/// <summary>Illumine le nuage autour de <paramref name="worldPos"/> (arc en retour d'une frappe), sans nouvel éclair.</summary>
+	public void FlashCloud(Vector3 worldPos)
+	{
+		LightningPosition = worldPos;
+		LightningTime = Time.GetTicksMsec() / 1000.0;
+	}
+
+	/// <summary>Frappe de foudre sur une cible mobile (le traceur la suit : coup inévitable).</summary>
+	public void TriggerStrike(Vector3 from, Node3D target, Vector3 targetLocal, float leaderTime)
+	{
+		EmitSignal(SignalName.StrikeTriggered, from, target, targetLocal, leaderTime);
 	}
 
 	/// <summary>

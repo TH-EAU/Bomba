@@ -65,6 +65,9 @@ public abstract partial class VehicleModule : Node3D
     /// <summary>Poussée actuelle fournie par ce module s'il est un moteur (sinon 0). Sert au PowerRatio.</summary>
     public virtual float CurrentPower => 0f;
 
+    /// <summary>Résistance à la foudre, 0..1 (la coque est une cage de Faraday, les moteurs sont le point faible). 1 = jamais coupé.</summary>
+    public virtual float LightningResistance => 1f;
+
     public override void _Ready()
     {
         Node node = GetParent();

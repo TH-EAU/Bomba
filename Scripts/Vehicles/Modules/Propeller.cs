@@ -28,6 +28,11 @@ public partial class Propeller : VehicleModule
     /// <summary>Crée un rotor visuel simple au démarrage.</summary>
     [Export] public bool CreateDefaultVisual { get; set; } = true;
 
+    /// <summary>Résistance à la foudre, 0..1 : 0 = coupé à chaque coup, 1 = jamais.</summary>
+    [Export(PropertyHint.Range, "0,1,0.05")] public float Resistance { get; set; } = 0f;
+
+    public override float LightningResistance => Resistance;
+
     /// <summary>Régime actuel (0..1).</summary>
     public float SpinLevel { get; private set; }
 

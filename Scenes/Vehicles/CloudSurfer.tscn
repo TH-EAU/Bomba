@@ -15,8 +15,11 @@ gravity_scale = 1.6
 angular_damp = 1.5
 script = ExtResource("1_vehicle")
 DisplayName = "Le CloudSurfer"
-LaunchSpeed = 160.0
+LaunchSpeed = 560.0
 CenterOfMassOffset = Vector3(0, -1.8, -1)
+SwayRollDeg = 7.0
+SwayPitchDeg = 4.5
+SwayFrequency = 0.052
 ForwardDrag = 0.012
 HoverAssist = 0.35
 NitroDrainPerSecond = 0.02
@@ -30,6 +33,9 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 0)
 
 [node name="ModelMirror" parent="." instance=ExtResource("5_model")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 0)
+
+[node name="Plane" parent="ModelMirror" index="0"]
+mesh = null
 
 [node name="Circle" parent="ModelMirror/Plane" index="0"]
 visible = false
