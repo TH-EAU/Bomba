@@ -26,8 +26,19 @@ uniform float step_time = 0.0;       // traceur par bonds : progression par saut
 uniform float leader_width = 1.0;    // largeur du canal pendant le traceur (part de la largeur pleine)
 uniform float branch_flash = 1.0;    // éclat des branches à l'arc en retour (part de celui du tronc)
 uniform vec3 target_offset = vec3(0.0); // déplacement de la cible depuis le départ (m), suivi selon le poids
+// Le halo du glow a une taille fixe à l'écran : de loin, il écrase un canal d'un pixel. Avec la distance, on plafonne la
+// luminosité sous le seuil du glow (8). Le tonemap Filmic sature bien avant : le trait reste aussi éclatant, seul le halo disparaît.
+uniform float far_start = 300.0;     // distance (m) où le plafond commence
+uniform float far_end = 2500.0;      // distance (m) où il est complet
+uniform float far_glow_cap = 7.0;    // luminosité maximale au-delà de far_end (sous 8 : plus de glow)
+// Le canal fait plusieurs mètres de large : à quelques centaines de mètres, il occuperait encore max_core_px. Le plafond de largeur
+// (pixels) descend donc avec la distance : épais de près (la frappe sur l'engin), un fil au loin.
+uniform float thin_start = 150.0;    // distance (m) où le canal commence à s'affiner
+uniform float thin_end = 600.0;      // distance (m) au-delà de laquelle il est plafonné à far_core_px
+uniform float far_core_px = 1.0;     // demi-largeur maximale au loin (pixels)
 
 varying float v_arrival;
+varying float v_far;
 varying float v_x;
 varying float v_vis;
 varying float v_branch;
@@ -48,7 +59,8 @@ void vertex() {
 	float px_world = 2.0 * depth / (PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y);
 	float width = mod(CUSTOM1.z, 10.0);
 	float tip = floor(CUSTOM1.z / 10.0) / 100.0;   // 0 a la pointe libre : le canal s'y affine jusqu'a rien
-	float half_width = clamp(core_width * width * (progress < leader_end ? leader_width : 1.0), min_core_px * px_world, max_core_px * px_world) * tip;
+	float max_px = mix(max_core_px, max(far_core_px, min_core_px), smoothstep(thin_start, thin_end, depth));
+	float half_width = clamp(core_width * width * (progress < leader_end ? leader_width : 1.0), min_core_px * px_world, max_px * px_world) * tip;
 	pv += perp * side * half_width;
 	POSITION = PROJECTION_MATRIX * vec4(pv, 1.0);
 
@@ -56,6 +68,7 @@ void vertex() {
 	v_vis = CUSTOM1.y;
 	v_branch = branch ? 1.0 : 0.0;
 	v_x = side;
+	v_far = smoothstep(far_start, far_end, depth);
 }
 
 void fragment() {
@@ -71,5 +84,6 @@ void fragment() {
 
 	// Coeur fin et très lumineux, bord antialiasé : pas de halo dessiné, le rayonnement vient du glow (post-traitement).
 	// Atténué par le nuage entre la caméra et le canal (v_vis, calculé par le script).
-	ALBEDO = bolt_color * energy * level * v_vis * (1.0 - smoothstep(0.5, 1.0, x));
+	vec3 c = bolt_color * energy * level * v_vis * (1.0 - smoothstep(0.5, 1.0, x));
+	ALBEDO = mix(c, min(c, vec3(far_glow_cap)), v_far);
 }

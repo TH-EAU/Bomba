@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://bvd7e8uwu3vnq" path="res://Scripts/Vehicles/Vehicle.cs" id="1_vehicle"]
 [ext_resource type="Script" uid="uid://b7bmqt5kk22y" path="res://Scripts/Vehicles/Modules/Thruster.cs" id="2_thruster"]
-[ext_resource type="Resource" path="res://Resources/Thrusters/CloudSurfer.tres" id="3_charbon"]
+[ext_resource type="Resource" uid="uid://d1doshjp2qi64" path="res://Resources/Thrusters/CloudSurfer.tres" id="3_charbon"]
 [ext_resource type="Script" uid="uid://xjtmlmyx0a0g" path="res://Scripts/Vehicles/Modules/AeroSurface.cs" id="4_aero"]
 [ext_resource type="PackedScene" uid="uid://cabh2g87kn8t2" path="res://Assets/Vehicules/CloudSurfer.glb" id="5_model"]
 
@@ -33,24 +33,6 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 0)
 
 [node name="ModelMirror" parent="." instance=ExtResource("5_model")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 0)
-
-[node name="Plane" parent="ModelMirror" index="0"]
-mesh = null
-
-[node name="Circle" parent="ModelMirror/Plane" index="0"]
-visible = false
-
-[node name="Circle_001" parent="ModelMirror/Plane" index="1"]
-visible = false
-
-[node name="Plane_003" parent="ModelMirror/Plane/Cube" index="0"]
-visible = false
-
-[node name="Plane_002" parent="ModelMirror" index="1"]
-visible = false
-
-[node name="Circle_002" parent="ModelMirror" index="2"]
-visible = false
 
 [node name="CockpitCamera" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.9961947, 0.08715574, 0, -0.08715574, 0.9961947, 0, 0.6, 0.46975136)

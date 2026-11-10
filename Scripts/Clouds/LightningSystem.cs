@@ -69,8 +69,35 @@ public partial class LightningSystem : Node3D
 
     public override void _Process(double delta)
     {
+        if (_testBolts)
+        {
+            TryConnectToField();
+            UpdateTestBolts((float)delta);
+            return;
+        }
         if (TryConnectToField())
             SetProcess(false);
+    }
+
+    // Test : -- --test-bolts fait tomber un éclair devant la caméra toutes les 0,8 s, à 400 m, 1,5 km puis 4 km.
+    private bool _testBolts = OS.GetCmdlineUserArgs().Contains("--test-bolts");
+    private float _testClock;
+    private int _testIndex;
+    private static readonly float[] TestDistances = { 400f, 1500f, 4000f };
+
+    private void UpdateTestBolts(float delta)
+    {
+        _testClock -= delta;
+        Camera3D cam = GetViewport()?.GetCamera3D();
+        if (_testClock > 0f || cam == null)
+            return;
+        _testClock = 0.8f;
+        float d = TestDistances[_testIndex++ % TestDistances.Length];
+        Vector3 fwd = -cam.GlobalBasis.Z with { Y = 0f };
+        Vector3 ground = cam.GlobalPosition + fwd.Normalized() * d;
+        Vector3 from = ground with { Y = cam.GlobalPosition.Y + 0.4f * d };
+        GD.Print($"[Foudre test] éclair à {d} m");
+        AddBolt(from, ground with { Y = SeaLevel });
     }
 
     public override void _ExitTree()

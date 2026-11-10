@@ -437,3 +437,9 @@
   - `CloudField.NearFogBoost` 4 : on peine à voir la proue (≈ 6 m) dans un nuage dense. 1 serait la valeur physique, avec une visibilité d'environ 20 m à densité 1.
 - Paramètres : un `vec4 near_fog` ajouté en fin de tampon (`ParamsBytes` 464 → 480).
 - Test : `-- --in-cloud` place l'engin dans un cœur de nuage dense.
+
+## 2026-11-10 : éclairs fins de loin
+- Le halo des éclairs vient du glow de l'environnement (seuil HDR 8). Sa taille est fixe à l'écran, donc de loin il écrasait un canal d'un pixel sous une grosse tache blanche.
+- `lightning_channel.gdshader` plafonne la luminosité du canal avec la distance : aucun plafond jusqu'à 300 m (`far_start`), puis un plafond à 7 à partir de 2,5 km (`far_end`, `far_glow_cap`), juste sous le seuil du glow. Le tonemap Filmic sature bien avant 7 : le trait reste aussi éclatant, seul le halo disparaît. Une première version qui baissait toute l'énergie (45 %) ternissait le trait. De près, rien ne change, y compris la frappe sur l'engin.
+- Mais l'épaisseur gênante à quelques centaines de mètres venait surtout du ruban lui-même : 2,5 m de demi-largeur, soit environ 7 pixels de large à 400 m. Le plafond de largeur en pixels descend donc lui aussi avec la distance : 4 pixels de demi-largeur jusqu'à 150 m (`thin_start`), puis 1 pixel au-delà de 600 m (`thin_end`, `far_core_px`). La frappe sur l'engin reste épaisse.
+- Test : `-- --test-bolts` fait tomber un éclair devant la caméra toutes les 0,8 s, à 400 m, 1,5 km puis 4 km.
