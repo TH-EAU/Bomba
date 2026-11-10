@@ -443,3 +443,10 @@
 - `lightning_channel.gdshader` plafonne la luminosité du canal avec la distance : aucun plafond jusqu'à 300 m (`far_start`), puis un plafond à 7 à partir de 2,5 km (`far_end`, `far_glow_cap`), juste sous le seuil du glow. Le tonemap Filmic sature bien avant 7 : le trait reste aussi éclatant, seul le halo disparaît. Une première version qui baissait toute l'énergie (45 %) ternissait le trait. De près, rien ne change, y compris la frappe sur l'engin.
 - Mais l'épaisseur gênante à quelques centaines de mètres venait surtout du ruban lui-même : 2,5 m de demi-largeur, soit environ 7 pixels de large à 400 m. Le plafond de largeur en pixels descend donc lui aussi avec la distance : 4 pixels de demi-largeur jusqu'à 150 m (`thin_start`), puis 1 pixel au-delà de 600 m (`thin_end`, `far_core_px`). La frappe sur l'engin reste épaisse.
 - Test : `-- --test-bolts` fait tomber un éclair devant la caméra toutes les 0,8 s, à 400 m, 1,5 km puis 4 km.
+
+## 2026-11-10 : relief et réfraction des gouttes de pluie
+- La normal map d'une traînée (`Resources/Textures/WaterDropNormal.png`) est recadrée sur la traînée, la tête de la goutte en bas de l'image, puis appliquée au trait de pluie dans `precip_draw.gdshader`. Elle s'ajoute au cylindre existant. Elle donne des reflets plus vivants et une réfraction : la goutte montre la scène derrière elle, décalée par son relief (`RainRefractionPixels`, `RainRefraction`).
+- Trajectoire, largeur, longueur et transparence restent celles d'avant. La grêle garde son rendu.
+- Seulement sur les gouttes de plus de 2 pixels de large à l'écran, avec une montée jusqu'à 5 pixels. Sur un trait d'un pixel, le relief faisait scintiller des pixels isolés (pointillés) ; les gouttes lointaines gardent donc exactement leur rendu d'origine.
+- La texture classique (`WaterDrop.png`) n'est pas utilisée. En masque de forme, elle changerait l'aspect des gouttes, que l'on veut garder.
+- Test : `-- --rain` force une pluie pleine, hors orage.

@@ -20,6 +20,7 @@ public partial class Precipitation : Node3D, IVehicleTracker
     private const string GeneratedName = "_Generated";
     private const string ProcessShaderPath = "res://Shaders/Effects/precip_process.gdshader";
     private const string DrawShaderPath = "res://Shaders/Effects/precip_draw.gdshader";
+    private const string DefaultRainNormalPath = "res://Resources/Textures/WaterDropNormal.png";
     /// <summary>Durée de vie (s) : les particules ne sont jamais recyclées, la boîte les replie autour de la caméra.</summary>
     private const double ParticleLifetime = 1000.0;
     private static readonly Aabb AlwaysVisible = new(new Vector3(-1e5f, -1e5f, -1e5f), new Vector3(2e5f, 2e5f, 2e5f));
@@ -37,6 +38,14 @@ public partial class Precipitation : Node3D, IVehicleTracker
     [Export] public float RainWidth { get; set; } = 0.02f;
     [Export] public Color RainColor { get; set; } = new(0.62f, 0.78f, 0.95f);
     [Export] public float RainOpacity { get; set; } = 0.75f;
+    /// <summary>Relief des gouttes (normal map d'une traînée, tête en bas). Vide : WaterDropNormal.png. Sert aux reflets et à la réfraction.</summary>
+    [Export] public Texture2D RainNormalMap { get; set; }
+    /// <summary>Force du relief de la normal map.</summary>
+    [Export(PropertyHint.Range, "0,3,0.05")] public float RainNormalStrength { get; set; } = 1f;
+    /// <summary>Décalage max (pixels) de la scène vue à travers une goutte.</summary>
+    [Export] public float RainRefractionPixels { get; set; } = 6f;
+    /// <summary>Part de la scène réfractée dans la couleur des gouttes (0 = rendu d'origine, sans réfraction).</summary>
+    [Export(PropertyHint.Range, "0,1,0.05")] public float RainRefraction { get; set; } = 0.7f;
 
     [ExportGroup("Grêle")]
     /// <summary>Nombre de grêlons à intensité 1.</summary>
@@ -78,6 +87,8 @@ public partial class Precipitation : Node3D, IVehicleTracker
     private float _time;
     private Vector3 _prevCamera;
     private bool _hasPrevCamera;
+    // Test : -- --rain force une pluie pleine, hors orage.
+    private readonly bool _forceRain = System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--rain") >= 0;
 
     public override void _Ready()
     {
@@ -109,7 +120,7 @@ public partial class Precipitation : Node3D, IVehicleTracker
         _hasPrevCamera = true;
 
         StormWeather storm = StormWeather.Instance;
-        float rainTarget = storm != null ? storm.RainAt(camPos) : 0f;
+        float rainTarget = _forceRain ? 1f : storm != null ? storm.RainAt(camPos) : 0f;
         float hailTarget = storm != null ? storm.HailAt(camPos) : 0f;
         float turbulence = (storm != null ? storm.Turbulence01(camPos) : 0f) * TurbulenceScale;
         float smoothing = 1f - Mathf.Exp(-IntensitySharpness * dt);
@@ -135,6 +146,10 @@ public partial class Precipitation : Node3D, IVehicleTracker
         AddChild(_generated);
         _rain = CreateLayer("Pluie", RainAmount);
         _hail = CreateLayer("Grele", HailAmount);
+
+        // Relief et réfraction : la pluie seulement, la grêle garde son cylindre.
+        _rain.Draw.SetShaderParameter("use_drop_normal", true);
+        _rain.Draw.SetShaderParameter("drop_normal", RainNormalMap ?? GD.Load<Texture2D>(DefaultRainNormalPath));
     }
 
     private Layer CreateLayer(string name, int amount)
@@ -182,5 +197,11 @@ public partial class Precipitation : Node3D, IVehicleTracker
         l.Draw.SetShaderParameter("min_px", MinPixels);
         l.Draw.SetShaderParameter("color", color);
         l.Draw.SetShaderParameter("opacity", opacity);
+        if (l == _rain)
+        {
+            l.Draw.SetShaderParameter("normal_strength", RainNormalStrength);
+            l.Draw.SetShaderParameter("refraction_px", RainRefractionPixels);
+            l.Draw.SetShaderParameter("refraction", RainRefraction);
+        }
     }
 }

@@ -16,6 +16,17 @@ uniform vec4 color : source_color = vec4(0.75, 0.8, 0.9, 1.0);
 uniform float opacity = 0.6;
 uniform float intensity = 0.0;     // intensité de la précipitation (0..1), pilotée par Precipitation.cs
 
+// Relief de la goutte (pluie seulement) : normal map d'une traînée (Resources/Textures/WaterDropNormal.png), recadrée sur
+// la traînée (tête en bas de l'image). Elle s'ajoute au cylindre : reflets plus vivants et réfraction de la scène derrière.
+uniform bool use_drop_normal = false;
+uniform sampler2D drop_normal : hint_normal, filter_linear_mipmap;
+uniform vec4 drop_rect = vec4(0.41, 0.91, 0.55, 0.17); // u gauche, v tête, u droite, v queue
+uniform float normal_strength = 1.0;
+uniform float refraction_px = 6.0;  // décalage max de la scène vue à travers la goutte (pixels)
+uniform float refraction = 0.7;     // part de la scène réfractée dans la couleur de la goutte
+uniform sampler2D screen_texture : hint_screen_texture, filter_linear_mipmap;
+
+varying vec3 along_v;    // direction du trait, de la tête vers la queue (espace vue)
 varying vec3 perp_v;     // direction latérale du trait (espace vue)
 varying vec3 to_cam_v;   // direction vers la caméra (espace vue)
 varying float hash_v;    // hachage fixe de la particule (0..1)
@@ -37,6 +48,7 @@ void vertex() {
 	side = length(side) > 1e-5 ? normalize(side) : vec3(1.0, 0.0, 0.0);
 
 	perp_v = side;
+	along_v = dir;
 	to_cam_v = normalize(-p);
 	hash_v = INSTANCE_CUSTOM.w;
 
@@ -53,6 +65,20 @@ void fragment() {
 	NORMAL = normalize(perp_v * x + to_cam_v * sqrt(max(1.0 - x * x, 0.0)));
 
 	ALBEDO = color.rgb;
+	if (use_drop_normal) {
+		vec2 duv = vec2(mix(drop_rect.x, drop_rect.z, UV.x), mix(drop_rect.y, drop_rect.w, UV.y));
+		vec2 nm = texture(drop_normal, duv).xy * 2.0 - 1.0;   // x vers la droite, y vers le haut de l'image (la queue)
+		// Seulement sur les gouttes assez larges à l'écran : sur un trait d'un pixel, le relief ne fait que du bruit (pointillés).
+		float across_px = 1.0 / max(fwidth(UV.x), 1e-4);
+		float k = smoothstep(2.0, 5.0, across_px);
+		vec3 bump = (perp_v * nm.x + along_v * nm.y) * normal_strength * k;
+		NORMAL = normalize(NORMAL + bump);
+		// Réfraction : la goutte montre la scène derrière, décalée par son relief (cylindre + normal map).
+		// NORMAL est en espace vue (y vers le haut), SCREEN_UV a y vers le bas.
+		vec3 behind = textureLod(screen_texture, SCREEN_UV - vec2(NORMAL.x, -NORMAL.y) * refraction_px / VIEWPORT_SIZE, 0.0).rgb;
+		ALBEDO = color.rgb * (1.0 - refraction * k);
+		EMISSION = behind * color.rgb * refraction * k;
+	}
 	ALPHA = opacity * keep * (1.0 - abs(UV.x * 2.0 - 1.0)) * mix(1.0, 0.4, UV.y);
 	ROUGHNESS = 0.12;
 	METALLIC = 0.0;

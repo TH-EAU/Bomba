@@ -18,7 +18,7 @@
 [ext_resource type="Script" uid="uid://ggxf52340y4d" path="res://Scripts/Clouds/StormWeather.cs" id="16_storm"]
 [ext_resource type="Script" uid="uid://d3gqi2o81w182" path="res://Scripts/Effects/Precipitation.cs" id="17_precip"]
 [ext_resource type="Script" uid="uid://hc4xa5s6ydq7" path="res://Scripts/Audio/WeatherAmbience.cs" id="18_ambience"]
-[ext_resource type="Script" path="res://Scripts/Effects/MotionBlur.cs" id="19_blur"]
+[ext_resource type="Script" uid="uid://bw31kewhojoyk" path="res://Scripts/Effects/MotionBlur.cs" id="19_blur"]
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1_root")
@@ -91,8 +91,11 @@ script = ExtResource("14_droplets")
 
 [node name="Precipitation" type="Node3D" parent="."]
 script = ExtResource("17_precip")
+RainAmount = 8000
+RainWidth = 0.04
 RainColor = Color(0.75, 0.8, 0.9, 1)
-RainOpacity = 0.6
+RainOpacity = 0.7
+RainNormalStrength = 1.3
 HailColor = Color(0.95, 0.97, 1, 1)
 HailOpacity = 0.9
 
