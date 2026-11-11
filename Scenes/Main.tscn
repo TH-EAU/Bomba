@@ -88,6 +88,7 @@ script = ExtResource("13_lightning")
 
 [node name="ScreenDroplets" type="CanvasLayer" parent="."]
 script = ExtResource("14_droplets")
+DropMaxRadius = 15.0
 
 [node name="Precipitation" type="Node3D" parent="."]
 script = ExtResource("17_precip")

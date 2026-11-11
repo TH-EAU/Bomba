@@ -482,3 +482,13 @@
     - la **déformation** (lentille) ;
     - un **reflet tiré de l'image** : la goutte reflète la scène autour d'elle (`reflect_extent_px`, légèrement flou), et seules les zones dont la luminance dépasse 0,6 y font un éclat, renforcé sur les bords (Fresnel). Sans lumière dans la scène, il n'y a pas de reflet.
     - Supprimés : le reflet à direction de lumière fixe, l'éclat opposé, le bord sombre, l'ombre portée, la teinte bleutée, le bruit du voile de buée et son éclaircissement.
+
+## 2026-11-10 : coque du CloudSurfer en résine
+- La texture de rugosité exportée par Blender est grise uniforme : la coque était traitée comme un métal mat à 98 %, sans reflet.
+- Nouveau matériau `Resources/Materials/CloudSurferResin.tres`, appliqué à la coque (`Model/Plane`) dans `CloudSurfer.tscn` :
+  - texture de couleur d'origine ;
+  - base non métallique, rugosité 0,35 ;
+  - vernis (clearcoat) 1, rugosité 0,06 : reflets du ciel et éclat du soleil.
+- Choix de l'utilisateur : **rester physique**, plutôt que des reflets stylisés ou une capture des nuages. Au crépuscule, les reflets restent discrets : le ciel est un dégradé uni et la mer est sombre.
+- Ciel (`sky_atmosphere.gdshader`) : sous l'horizon, le passage ciel -> mer des reflets est resserré (`under_blend` 0,06, au lieu de 0,25) pour une ligne d'horizon plus nette dans les surfaces vernies. Effet de bord : la lumière ambiante venant d'en dessous est un peu plus sombre.
+- Les reflets d'écran (SSR) ont été essayés puis retirés : aucun gain visible sur la coque, pour un coût notable sur toute la scène.

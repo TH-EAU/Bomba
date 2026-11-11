@@ -44,6 +44,7 @@ uniform float mie_back_weight : hint_range(0.0, 1.0) = 0.3;
 uniform float atmosphere_density : hint_range(0.0, 5.0) = 1.0;
 uniform float exposure = 22.0;
 uniform vec4 color_under : source_color = vec4(0.01, 0.015, 0.05, 1.0);
+uniform float under_blend = 0.06;   // largeur (sinus de l'angle) du passage ciel -> mer sous l'horizon, dans les reflets
 
 group_uniforms Sun;
 uniform vec2 sun_azimuth = vec2(0.0, -1.0);
@@ -223,7 +224,9 @@ void sky() {
 		vec3 tr;
 		vec3 col = integrate_scattering(start, above_horizon(EYEDIR), scatter_sun, sun_light_color, tr);
 
-		COLOR = mix(color_under.rgb, col, smoothstep(-0.25, 0.0, EYEDIR.y));
+		// Mer sous l'horizon, pour les reflets et la lumière ambiante. La transition est serrée : la mer reflète le ciel au
+		// ras de l'horizon puis s'assombrit vite ; une ligne d'horizon nette fait vivre les reflets des surfaces vernies.
+		COLOR = mix(color_under.rgb, col, smoothstep(-under_blend, 0.0, EYEDIR.y));
 	} else if (AT_QUARTER_RES_PASS) {
 		COLOR = view_transmittance(start, above_horizon(EYEDIR));
 	} else {
